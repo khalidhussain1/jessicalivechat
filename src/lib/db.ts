@@ -47,11 +47,13 @@ export function ensureSchema(): Promise<void> {
           id TEXT PRIMARY KEY,
           email TEXT NOT NULL UNIQUE,
           name TEXT NOT NULL,
+          phone TEXT,
           password_hash TEXT,
           provider TEXT NOT NULL DEFAULT 'credentials',
           created_at BIGINT NOT NULL
         )
       `;
+      await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT`;
 
       await sql`
         CREATE TABLE IF NOT EXISTS agents (

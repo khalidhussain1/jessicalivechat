@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useSession, signIn, signOut } from "next-auth/react";
 import { useNotificationSound, isSoundMuted, setSoundMuted } from "@/lib/use-notification-sound";
 import { MessageTicks } from "@/components/MessageTicks";
+import { ProfileModal } from "@/components/ProfileModal";
 
 type Message = {
   id: number;
@@ -169,7 +170,8 @@ function AuthGate({
 }
 
 export function SupportChat() {
-  const { data: session, status } = useSession();
+  const { data: session, status, update: updateSession } = useSession();
+  const [showProfile, setShowProfile] = useState(false);
   const [guestMode, setGuestMode] = useState<boolean | null>(null);
   const [googleEnabled, setGoogleEnabled] = useState(false);
 
@@ -203,6 +205,15 @@ export function SupportChat() {
   const displayName = session?.user?.name ?? "Guest";
   const showGate = status === "unauthenticated" && guestMode === false;
   const ready = status === "authenticated" || guestMode === true;
+
+  // only the *first* auth resolution should show the full-page loading state —
+  // a later status flicker back to "loading" (e.g. from useSession().update())
+  // must not unmount the whole chat (and whatever modal is open inside it)
+  const [hasResolvedAuth, setHasResolvedAuth] = useState(false);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- latches once status first settles, ignoring later flickers
+    if (status !== "loading") setHasResolvedAuth(true);
+  }, [status]);
 
   useEffect(() => {
     if (!ready) return;
@@ -379,7 +390,7 @@ export function SupportChat() {
 
   const ringOnCooldown = ringRemainingMs > 0;
 
-  if (guestMode === null || status === "loading") {
+  if (guestMode === null || !hasResolvedAuth) {
     return (
       <div className="flex min-h-0 flex-1 items-center justify-center bg-panel text-sm text-text-dim md:h-[70vh] md:max-h-[720px] md:flex-none md:rounded-2xl md:border md:border-border">
         Loading…
@@ -440,16 +451,33 @@ export function SupportChat() {
             {muted ? "🔇" : "🔊"}
           </button>
           {session && (
-            <button
-              type="button"
-              onClick={() => signOut({ redirect: false })}
-              className="text-sm text-text-dim underline underline-offset-4 hover:text-accent-bright"
-            >
-              Sign out
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => setShowProfile(true)}
+                title="Your profile"
+                className="text-xl text-text-dim transition hover:text-accent-bright"
+              >
+                👤
+              </button>
+              <button
+                type="button"
+                onClick={() => signOut({ redirect: false })}
+                className="text-sm text-text-dim underline underline-offset-4 hover:text-accent-bright"
+              >
+                Sign out
+              </button>
+            </>
           )}
         </div>
       </div>
+
+      {showProfile && (
+        <ProfileModal
+          onClose={() => setShowProfile(false)}
+          onSaved={(newName) => updateSession({ name: newName })}
+        />
+      )}
 
       <div className="flex gap-2 overflow-x-auto border-b border-border px-4 py-3">
         {quickActions.map((label) => (

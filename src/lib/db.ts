@@ -19,10 +19,16 @@ export function ensureSchema(): Promise<void> {
           agent_read_at BIGINT NOT NULL DEFAULT 0,
           visitor_typing_at BIGINT NOT NULL DEFAULT 0,
           agent_typing_at BIGINT NOT NULL DEFAULT 0,
-          rung_at BIGINT NOT NULL DEFAULT 0
+          rung_at BIGINT NOT NULL DEFAULT 0,
+          ring_dismissed_at BIGINT NOT NULL DEFAULT 0,
+          visitor_last_seen_at BIGINT NOT NULL DEFAULT 0,
+          status TEXT NOT NULL DEFAULT 'open'
         )
       `;
       await sql`ALTER TABLE conversations ADD COLUMN IF NOT EXISTS rung_at BIGINT NOT NULL DEFAULT 0`;
+      await sql`ALTER TABLE conversations ADD COLUMN IF NOT EXISTS ring_dismissed_at BIGINT NOT NULL DEFAULT 0`;
+      await sql`ALTER TABLE conversations ADD COLUMN IF NOT EXISTS visitor_last_seen_at BIGINT NOT NULL DEFAULT 0`;
+      await sql`ALTER TABLE conversations ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'open'`;
 
       await sql`
         CREATE TABLE IF NOT EXISTS messages (
@@ -61,9 +67,11 @@ export function ensureSchema(): Promise<void> {
           name TEXT NOT NULL,
           username TEXT NOT NULL UNIQUE,
           password_hash TEXT NOT NULL,
-          created_at BIGINT NOT NULL
+          created_at BIGINT NOT NULL,
+          last_seen_at BIGINT NOT NULL DEFAULT 0
         )
       `;
+      await sql`ALTER TABLE agents ADD COLUMN IF NOT EXISTS last_seen_at BIGINT NOT NULL DEFAULT 0`;
     })();
   }
   return schemaReady;

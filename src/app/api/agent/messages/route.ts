@@ -8,12 +8,14 @@ import {
   markDelivered,
   markRead,
 } from "@/lib/chat-db";
+import { touchAgentSeen } from "@/lib/agents-db";
 
 export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
   const token = request.cookies.get(AGENT_COOKIE)?.value;
-  if (!(await verifyAgentSessionToken(token))) {
+  const session = await verifyAgentSessionToken(token);
+  if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -24,6 +26,7 @@ export async function GET(request: NextRequest) {
   const afterId = Number(request.nextUrl.searchParams.get("afterId") ?? "0") || 0;
   const visible = request.nextUrl.searchParams.get("visible") !== "false";
 
+  await touchAgentSeen(session.id);
   if (visible) {
     await Promise.all([markRead(visitorId, "agent"), markConversationRead(visitorId)]);
   } else {

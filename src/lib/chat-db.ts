@@ -1,6 +1,9 @@
 import { sql, ensureSchema } from "@/lib/db";
 
 const RING_COOLDOWN_MS = 30_000;
+export const VISITOR_ONLINE_WINDOW_MS = 15_000;
+
+export type ConversationStatus = "open" | "pending" | "resolved";
 
 export type ChatMessage = {
   id: number;
@@ -147,18 +150,24 @@ export async function setTyping(visitorId: string, from: "user" | "agent") {
 export async function getTypingStatus(visitorId: string) {
   await ensureSchema();
   const rows = await sql`
-    SELECT visitor_typing_at as "visitorTypingAt", agent_typing_at as "agentTypingAt", rung_at as "rungAt"
+    SELECT visitor_typing_at as "visitorTypingAt", agent_typing_at as "agentTypingAt",
+           rung_at as "rungAt", ring_dismissed_at as "ringDismissedAt"
     FROM conversations WHERE visitor_id = ${visitorId}
   `;
   const row = rows[0];
+  const rungAt = row ? Number(row.rungAt) : 0;
+  const ringDismissedAt = row ? Number(row.ringDismissedAt) : 0;
   return {
     visitorTypingAt: row ? Number(row.visitorTypingAt) : 0,
     agentTypingAt: row ? Number(row.agentTypingAt) : 0,
-    rungAt: row ? Number(row.rungAt) : 0,
+    rungAt,
+    ringActive: rungAt > 0 && rungAt > ringDismissedAt,
   };
 }
 
-// customer "ring the bell" — rate-limited request for an agent to respond ASAP
+// customer "ring the bell" — rate-limited request for an agent to respond ASAP.
+// Stays "active" (continues alerting the agent) until the agent explicitly dismisses it,
+// independent of this cooldown, which only throttles how often a NEW ring can be sent.
 export async function ringForHelp(
   visitorId: string,
 ): Promise<{ ok: true; rungAt: number } | { ok: false; retryAfterMs: number }> {
@@ -177,6 +186,28 @@ export async function ringForHelp(
   return { ok: true, rungAt: now };
 }
 
+// agent dismisses one ringing conversation, or all of them at once (visitorId omitted)
+export async function dismissRing(visitorId?: string) {
+  await ensureSchema();
+  const now = Date.now();
+  if (visitorId) {
+    await sql`UPDATE conversations SET ring_dismissed_at = ${now} WHERE visitor_id = ${visitorId}`;
+  } else {
+    await sql`UPDATE conversations SET ring_dismissed_at = ${now} WHERE rung_at > ring_dismissed_at`;
+  }
+}
+
+export async function touchVisitorSeen(visitorId: string) {
+  await ensureSchema();
+  await ensureConversation(visitorId);
+  await sql`UPDATE conversations SET visitor_last_seen_at = ${Date.now()} WHERE visitor_id = ${visitorId}`;
+}
+
+export async function setConversationStatus(visitorId: string, status: ConversationStatus) {
+  await ensureSchema();
+  await sql`UPDATE conversations SET status = ${status} WHERE visitor_id = ${visitorId}`;
+}
+
 export type ConversationSummary = {
   visitorId: string;
   visitorName: string | null;
@@ -185,6 +216,9 @@ export type ConversationSummary = {
   agentReadAt: number;
   visitorTypingAt: number;
   rungAt: number;
+  ringActive: boolean;
+  visitorOnline: boolean;
+  status: ConversationStatus;
   lastMessageText: string | null;
   lastMessageSender: "user" | "agent" | null;
   lastMessageImage: boolean;
@@ -201,6 +235,9 @@ export async function listConversations(): Promise<ConversationSummary[]> {
       c.agent_read_at as "agentReadAt",
       c.visitor_typing_at as "visitorTypingAt",
       c.rung_at as "rungAt",
+      c.ring_dismissed_at as "ringDismissedAt",
+      c.visitor_last_seen_at as "visitorLastSeenAt",
+      c.status as "status",
       (SELECT m.sender_name FROM messages m
         WHERE m.visitor_id = c.visitor_id AND m.sender = 'user' AND m.sender_name IS NOT NULL
         ORDER BY m.id DESC LIMIT 1) as "visitorName",
@@ -211,19 +248,27 @@ export async function listConversations(): Promise<ConversationSummary[]> {
     ORDER BY c.last_message_at DESC
   `;
 
-  return rows.map((row) => ({
-    visitorId: row.visitorId,
-    visitorName: row.visitorName,
-    createdAt: Number(row.createdAt),
-    lastMessageAt: Number(row.lastMessageAt),
-    agentReadAt: Number(row.agentReadAt),
-    visitorTypingAt: Number(row.visitorTypingAt),
-    rungAt: Number(row.rungAt),
-    lastMessageText: row.lastMessageText,
-    lastMessageSender: row.lastMessageSender,
-    lastMessageImage: !!row.lastMessageImage,
-    unread: Number(row.lastMessageAt) > Number(row.agentReadAt),
-  }));
+  const now = Date.now();
+  return rows.map((row) => {
+    const rungAt = Number(row.rungAt);
+    const ringDismissedAt = Number(row.ringDismissedAt);
+    return {
+      visitorId: row.visitorId,
+      visitorName: row.visitorName,
+      createdAt: Number(row.createdAt),
+      lastMessageAt: Number(row.lastMessageAt),
+      agentReadAt: Number(row.agentReadAt),
+      visitorTypingAt: Number(row.visitorTypingAt),
+      rungAt,
+      ringActive: rungAt > 0 && rungAt > ringDismissedAt,
+      visitorOnline: now - Number(row.visitorLastSeenAt) < VISITOR_ONLINE_WINDOW_MS,
+      status: (row.status ?? "open") as ConversationStatus,
+      lastMessageText: row.lastMessageText,
+      lastMessageSender: row.lastMessageSender,
+      lastMessageImage: !!row.lastMessageImage,
+      unread: Number(row.lastMessageAt) > Number(row.agentReadAt),
+    };
+  });
 }
 
 export async function markConversationRead(visitorId: string) {

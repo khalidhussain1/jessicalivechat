@@ -5,6 +5,14 @@ import { useSession, signIn, signOut } from "next-auth/react";
 import { useNotificationSound, isSoundMuted, setSoundMuted } from "@/lib/use-notification-sound";
 import { MessageTicks } from "@/components/MessageTicks";
 import { ProfileModal } from "@/components/ProfileModal";
+import { JessicaAvatar } from "@/components/JessicaAvatar";
+import { StatusDot } from "@/components/StatusDot";
+import { useTheme } from "@/lib/use-theme";
+import {
+  notificationPermission,
+  requestNotificationPermission,
+  showNotification,
+} from "@/lib/use-browser-notifications";
 
 type Message = {
   id: number;
@@ -16,6 +24,8 @@ type Message = {
   createdAt: number;
   deliveredAt: number | null;
   readAt: number | null;
+  pending?: boolean;
+  failed?: boolean;
 };
 
 const VISITOR_KEY = "jessica-visitor-id";
@@ -24,16 +34,39 @@ const TYPING_THROTTLE_MS = 2000;
 const POLL_INTERVAL_MS = 2000;
 const TYPING_FRESH_MS = 4000;
 const RING_COOLDOWN_MS = 30_000;
+const NEAR_BOTTOM_PX = 80;
 
 const quickActions = [
-  "🔐 Account help",
-  "🐛 Report a bug",
+  "👤 I need account?",
+  "💳 Payment method?",
+  "💬 Is anyone available to chat?",
   "🎮 Game question",
-  "💬 General question",
 ] as const;
 
 function formatTime(ms: number) {
   return new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+function formatDateSeparator(ms: number) {
+  const date = new Date(ms);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  const sameDay = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  if (sameDay(date, today)) return "Today";
+  if (sameDay(date, yesterday)) return "Yesterday";
+  return date.toLocaleDateString([], { month: "long", day: "numeric", year: "numeric" });
+}
+
+function parseQuote(text: string): { quote: string | null; body: string } {
+  if (text.startsWith("> ")) {
+    const newlineIndex = text.indexOf("\n");
+    if (newlineIndex !== -1) {
+      return { quote: text.slice(2, newlineIndex), body: text.slice(newlineIndex + 1) };
+    }
+  }
+  return { quote: null, body: text };
 }
 
 function TypingDots() {
@@ -96,10 +129,14 @@ function AuthGate({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-5 bg-panel px-8 text-center md:h-[70vh] md:max-h-[720px] md:flex-none md:rounded-2xl md:border md:border-border">
-      <div>
-        <p className="text-lg font-medium text-foreground">🎮 Jessica</p>
-        <p className="mt-1 text-xs text-text-dim">
-          Gamer support — sign in to keep your chat history, or continue as a guest.
+      <div className="flex flex-col items-center gap-2">
+        <JessicaAvatar size={56} />
+        <div>
+          <p className="text-lg font-medium text-foreground">Jessica</p>
+          <p className="text-xs text-text-dim">Game Support</p>
+        </div>
+        <p className="mt-1 max-w-xs text-xs text-text-dim">
+          Sign in to keep your chat history, or continue as a guest.
         </p>
       </div>
 
@@ -107,7 +144,7 @@ function AuthGate({
         <button
           type="button"
           onClick={() => signIn("google")}
-          className="w-full max-w-xs rounded-full border border-border bg-panel-raised px-5 py-3 text-base text-foreground transition hover:border-accent/40 active:scale-[0.98]"
+          className="w-full max-w-xs rounded-full border border-border bg-panel-raised px-5 py-3 text-base text-foreground transition hover:border-accent/40 focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none active:scale-[0.98]"
         >
           Continue with Google
         </button>
@@ -120,7 +157,8 @@ function AuthGate({
             onChange={(event) => setName(event.target.value)}
             placeholder="Name"
             required
-            className="w-full rounded-full border border-border bg-background px-4 py-3 text-base text-foreground placeholder:text-text-faint focus:border-accent/50 focus:outline-none"
+            aria-label="Name"
+            className="w-full rounded-full border border-border bg-background px-4 py-3 text-base text-foreground placeholder:text-text-faint focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none focus:border-accent/50"
           />
         )}
         <input
@@ -129,7 +167,8 @@ function AuthGate({
           onChange={(event) => setEmail(event.target.value)}
           placeholder="Email"
           required
-          className="w-full rounded-full border border-border bg-background px-4 py-3 text-base text-foreground placeholder:text-text-faint focus:border-accent/50 focus:outline-none"
+          aria-label="Email"
+          className="w-full rounded-full border border-border bg-background px-4 py-3 text-base text-foreground placeholder:text-text-faint focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none focus:border-accent/50"
         />
         <input
           type="password"
@@ -138,13 +177,18 @@ function AuthGate({
           placeholder="Password"
           required
           minLength={8}
-          className="w-full rounded-full border border-border bg-background px-4 py-3 text-base text-foreground placeholder:text-text-faint focus:border-accent/50 focus:outline-none"
+          aria-label="Password"
+          className="w-full rounded-full border border-border bg-background px-4 py-3 text-base text-foreground placeholder:text-text-faint focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none focus:border-accent/50"
         />
-        {error && <p className="text-xs text-red-500">{error}</p>}
+        {error && (
+          <p role="alert" className="text-xs text-red-500">
+            {error}
+          </p>
+        )}
         <button
           type="submit"
           disabled={submitting}
-          className="w-full rounded-full bg-accent px-5 py-3 text-base text-white transition hover:bg-accent-bright active:scale-[0.98] disabled:opacity-50"
+          className="w-full rounded-full bg-accent px-5 py-3 text-base text-white transition hover:bg-accent-bright focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none active:scale-[0.98] disabled:opacity-50"
         >
           {mode === "signup" ? "Sign up" : "Sign in"}
         </button>
@@ -171,6 +215,7 @@ function AuthGate({
 
 export function SupportChat() {
   const { data: session, status, update: updateSession } = useSession();
+  const { theme, toggleTheme } = useTheme();
   const [showProfile, setShowProfile] = useState(false);
   const [guestMode, setGuestMode] = useState<boolean | null>(null);
   const [googleEnabled, setGoogleEnabled] = useState(false);
@@ -179,23 +224,35 @@ export function SupportChat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
   const [connected, setConnected] = useState(false);
+  const [agentOnline, setAgentOnline] = useState(false);
   const [peerTyping, setPeerTyping] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [muted, setMuted] = useState(false);
   const [ringCooldownUntil, setRingCooldownUntil] = useState(0);
   const [ringRemainingMs, setRingRemainingMs] = useState(0);
-  const [ringSent, setRingSent] = useState(false);
+  const [ringActive, setRingActive] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [copiedId, setCopiedId] = useState<number | string | null>(null);
+  const [showScrollButton, setShowScrollButton] = useState(false);
+  const [newMessageCount, setNewMessageCount] = useState(0);
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission | "unsupported">(
+    "default",
+  );
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const lastTypingSentAt = useRef(0);
   const lastMessageIdRef = useRef(0);
+  const nearBottomRef = useRef(true);
+  const lastNotifiedIdRef = useRef(0);
   const { play, unlock } = useNotificationSound();
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage is only readable client-side
     setGuestMode(window.localStorage.getItem(GUEST_KEY) === "1");
     setMuted(isSoundMuted());
+    setNotifPermission(notificationPermission());
     fetch("/api/auth/config")
       .then((res) => res.json())
       .then((data: { googleEnabled: boolean }) => setGoogleEnabled(data.googleEnabled))
@@ -246,10 +303,15 @@ export function SupportChat() {
           statusUpdates: Message[];
           agentTypingAt: number;
           rungAt: number;
+          ringActive: boolean;
+          agentOnline: boolean;
         } = await res.json();
         if (cancelled) return;
 
         setConnected(true);
+        setAgentOnline(data.agentOnline);
+        setRingActive(data.ringActive);
+
         if (data.messages.length > 0) {
           lastMessageIdRef.current = data.messages[data.messages.length - 1].id;
         }
@@ -264,7 +326,21 @@ export function SupportChat() {
               return update ? { ...m, deliveredAt: update.deliveredAt, readAt: update.readAt } : m;
             });
           });
-          if (data.messages.some((m) => m.sender === "agent")) play();
+
+          const newAgentMessages = data.messages.filter((m) => m.sender === "agent");
+          if (newAgentMessages.length > 0) {
+            if (nearBottomRef.current) {
+              play();
+            } else {
+              setNewMessageCount((n) => n + newAgentMessages.length);
+            }
+
+            const latest = newAgentMessages[newAgentMessages.length - 1];
+            if (!visible && latest.id !== lastNotifiedIdRef.current) {
+              lastNotifiedIdRef.current = latest.id;
+              showNotification("Jessica sent you a message", parseQuote(latest.text).body || "📷 Photo");
+            }
+          }
         }
         setPeerTyping(Date.now() - data.agentTypingAt < TYPING_FRESH_MS);
         if (data.rungAt > 0) {
@@ -295,30 +371,87 @@ export function SupportChat() {
   }, [ringCooldownUntil]);
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    if (nearBottomRef.current) {
+      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    }
   }, [messages, peerTyping]);
+
+  function handleScroll() {
+    const el = scrollRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const near = distanceFromBottom < NEAR_BOTTOM_PX;
+    nearBottomRef.current = near;
+    setShowScrollButton(!near);
+    if (near) setNewMessageCount(0);
+  }
+
+  function scrollToBottom() {
+    nearBottomRef.current = true;
+    setNewMessageCount(0);
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+  }
 
   async function sendMessage(text: string) {
     const trimmed = text.trim();
     if (!trimmed || !visitorId) return;
-    setDraft("");
 
+    const outgoing = replyingTo ? `> ${parseQuote(replyingTo.text).body.slice(0, 80)}\n${trimmed}` : trimmed;
+    setDraft("");
+    setReplyingTo(null);
+
+    // eslint-disable-next-line react-hooks/purity -- this runs inside an event handler (a user clicking Send), never during render
+    const tempId = -Date.now();
+    const optimistic: Message = {
+      id: tempId,
+      visitorId,
+      sender: "user",
+      senderName: displayName,
+      text: outgoing,
+      imageUrl: null,
+      // eslint-disable-next-line react-hooks/purity -- event-handler timestamp for an optimistic message, not a render value
+      createdAt: Date.now(),
+      deliveredAt: null,
+      readAt: null,
+      pending: true,
+    };
+    setMessages((prev) => [...prev, optimistic]);
+
+    await sendToServer(tempId, outgoing);
+  }
+
+  async function sendToServer(tempId: number, text: string) {
+    if (!visitorId) return;
     try {
       const res = await fetch("/api/chat/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ visitorId, text: trimmed, senderName: displayName }),
+        body: JSON.stringify({ visitorId, text, senderName: displayName }),
       });
       const data: { message: Message } = await res.json();
-      if (data?.message) {
-        setMessages((prev) =>
-          prev.some((m) => m.id === data.message.id) ? prev : [...prev, data.message],
-        );
-        lastMessageIdRef.current = Math.max(lastMessageIdRef.current, data.message.id);
-      }
+      if (!res.ok || !data?.message) throw new Error("send failed");
+      setMessages((prev) => {
+        // a slower, already-in-flight poll can independently discover this same message
+        // (via its own afterId cursor) before this response replaces the optimistic
+        // placeholder — if so, drop the placeholder instead of creating a duplicate id
+        if (prev.some((m) => m.id === data.message.id)) {
+          return prev.filter((m) => m.id !== tempId);
+        }
+        return prev.map((m) => (m.id === tempId ? { ...data.message } : m));
+      });
+      lastMessageIdRef.current = Math.max(lastMessageIdRef.current, data.message.id);
     } catch {
-      // the next poll will pick it up if the request actually succeeded server-side
+      setMessages((prev) =>
+        prev.map((m) => (m.id === tempId ? { ...m, pending: false, failed: true } : m)),
+      );
     }
+  }
+
+  function retryMessage(message: Message) {
+    setMessages((prev) =>
+      prev.map((m) => (m.id === message.id ? { ...m, pending: true, failed: false } : m)),
+    );
+    sendToServer(message.id, message.text);
   }
 
   function handleDraftChange(value: string) {
@@ -332,6 +465,13 @@ export function SupportChat() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ visitorId }),
       }).catch(() => {});
+    }
+  }
+
+  function handleComposerKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      sendMessage(draft);
     }
   }
 
@@ -367,6 +507,21 @@ export function SupportChat() {
     setSoundMuted(next);
   }
 
+  async function handleEnableNotifications() {
+    const permission = await requestNotificationPermission();
+    setNotifPermission(permission);
+  }
+
+  async function copyMessage(message: Message) {
+    try {
+      await navigator.clipboard.writeText(parseQuote(message.text).body);
+      setCopiedId(message.id);
+      setTimeout(() => setCopiedId((id) => (id === message.id ? null : id)), 1500);
+    } catch {
+      // clipboard access can fail (permissions/unsupported) — not worth surfacing an error for
+    }
+  }
+
   async function handleRing() {
     if (!visitorId || Date.now() < ringCooldownUntil) return;
     try {
@@ -378,14 +533,22 @@ export function SupportChat() {
       const data: { ok?: boolean; rungAt?: number; retryAfterMs?: number } = await res.json();
       if (res.ok && data.rungAt) {
         setRingCooldownUntil(data.rungAt + RING_COOLDOWN_MS);
-        setRingSent(true);
-        setTimeout(() => setRingSent(false), 2000);
+        setRingActive(true);
       } else if (data.retryAfterMs) {
         setRingCooldownUntil(Date.now() + data.retryAfterMs);
       }
     } catch {
       // no-op; the button just stays enabled and they can try again
     }
+  }
+
+  function handleLogout() {
+    signOut({ redirect: false });
+    window.localStorage.removeItem(GUEST_KEY);
+    setGuestMode(false);
+    setMessages([]);
+    setVisitorId(null);
+    lastMessageIdRef.current = 0;
   }
 
   const ringOnCooldown = ringRemainingMs > 0;
@@ -413,61 +576,85 @@ export function SupportChat() {
   return (
     <div
       onClick={unlock}
-      className="flex min-h-0 flex-1 flex-col overflow-hidden bg-panel md:h-[70vh] md:max-h-[720px] md:flex-none md:rounded-2xl md:border md:border-border"
+      className="theme-transition flex min-h-0 flex-1 flex-col overflow-hidden bg-panel md:h-[70vh] md:max-h-[720px] md:flex-none md:rounded-2xl md:border md:border-border"
     >
-      <div className="flex items-center justify-between border-b border-border px-4 py-3 pt-[max(env(safe-area-inset-top),0.75rem)] md:pt-3">
-        <div>
-          <p className="text-lg font-medium text-foreground">🎮 Jessica</p>
-          <p className="text-xs text-text-dim">
-            {connected ? `Chatting as ${displayName}` : "Connecting…"}
-          </p>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3 pt-[max(env(safe-area-inset-top),0.75rem)] md:pt-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <JessicaAvatar size={40} />
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <p className="truncate text-base font-medium text-foreground">Jessica</p>
+              <span className="hidden shrink-0 rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-accent-bright sm:inline-flex">
+                Game Support
+              </span>
+            </div>
+            {connected ? (
+              <StatusDot online={agentOnline} />
+            ) : (
+              <p className="text-xs text-text-dim">Connecting…</p>
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 sm:gap-2.5">
           <button
             type="button"
             onClick={handleRing}
-            disabled={ringOnCooldown}
+            disabled={ringOnCooldown && !ringActive}
             title="Ring for urgent help"
-            className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium whitespace-nowrap transition active:scale-95 ${
-              ringSent
-                ? "border-accent bg-accent/10 text-accent-bright"
+            aria-label="Ring for urgent help"
+            className={`flex h-9 shrink-0 items-center justify-center rounded-full border px-3 text-xs font-medium whitespace-nowrap transition focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none active:scale-95 ${
+              ringActive
+                ? "animate-pulse border-amber-500 bg-amber-500/10 text-amber-600"
                 : ringOnCooldown
                   ? "border-border text-text-faint"
                   : "border-amber-500/50 text-amber-600 hover:border-amber-500 hover:bg-amber-500/10"
             }`}
           >
-            {ringSent
-              ? "🔔 Sent!"
+            {ringActive
+              ? "🔔 Ringing…"
               : ringOnCooldown
                 ? `🔔 ${Math.ceil(ringRemainingMs / 1000)}s`
                 : "🔔 Ring"}
           </button>
           <button
             type="button"
+            onClick={toggleTheme}
+            title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg text-text-dim transition hover:text-accent-bright focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
+          >
+            {theme === "dark" ? "☀️" : "🌙"}
+          </button>
+          <button
+            type="button"
             onClick={toggleMute}
             title={muted ? "Unmute sound alerts" : "Mute sound alerts"}
-            className="text-xl text-text-dim transition hover:text-accent-bright"
+            aria-label={muted ? "Unmute sound alerts" : "Mute sound alerts"}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg text-text-dim transition hover:text-accent-bright focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
           >
             {muted ? "🔇" : "🔊"}
           </button>
           {session && (
-            <>
-              <button
-                type="button"
-                onClick={() => setShowProfile(true)}
-                title="Your profile"
-                className="text-xl text-text-dim transition hover:text-accent-bright"
-              >
-                👤
-              </button>
-              <button
-                type="button"
-                onClick={() => signOut({ redirect: false })}
-                className="text-sm text-text-dim underline underline-offset-4 hover:text-accent-bright"
-              >
-                Sign out
-              </button>
-            </>
+            <button
+              type="button"
+              onClick={() => setShowProfile(true)}
+              title="Your profile"
+              aria-label="Your profile"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg text-text-dim transition hover:text-accent-bright focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
+            >
+              👤
+            </button>
+          )}
+          {(session || guestMode) && (
+            <button
+              type="button"
+              onClick={handleLogout}
+              title="Log out"
+              aria-label="Log out"
+              className="flex h-9 shrink-0 items-center justify-center rounded-full px-2.5 text-sm text-text-dim underline underline-offset-4 transition hover:text-accent-bright focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
+            >
+              Logout
+            </button>
           )}
         </div>
       </div>
@@ -479,95 +666,238 @@ export function SupportChat() {
         />
       )}
 
+      {notifPermission === "default" && (
+        <button
+          type="button"
+          onClick={handleEnableNotifications}
+          className="shrink-0 border-b border-border bg-panel-raised px-4 py-2 text-left text-xs text-text-dim transition hover:text-accent-bright"
+        >
+          🔔 Enable notifications for new replies
+        </button>
+      )}
+
       <div className="flex gap-2 overflow-x-auto border-b border-border px-4 py-3">
         {quickActions.map((label) => (
           <button
             key={label}
             type="button"
             onClick={() => sendMessage(label)}
-            className="shrink-0 rounded-full border border-accent/40 px-4 py-2 text-sm whitespace-nowrap text-accent-bright transition hover:border-accent hover:bg-accent/10 active:scale-[0.97]"
+            className="shrink-0 rounded-full border border-accent/40 px-4 py-2 text-sm whitespace-nowrap text-accent-bright transition hover:border-accent hover:bg-accent/10 focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none active:scale-[0.97]"
           >
             {label}
           </button>
         ))}
       </div>
 
-      <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
-        <div className="flex justify-start">
-          <div className="max-w-[80%] rounded-2xl border border-border bg-panel-raised px-4 py-2.5 text-sm text-foreground">
-            👾 You&apos;re chatting with Jessica, your gamer support crew. Send a message to get
-            started.
-          </div>
-        </div>
-
-        {messages.map((message) =>
-          message.imageUrl ? (
-            <div
-              key={message.id}
-              className={`flex flex-col ${message.sender === "user" ? "items-end" : "items-start"}`}
-            >
-              {message.sender === "agent" && (
-                <p className="mb-0.5 text-[10px] tracking-wide text-accent-bright uppercase">
-                  Jessica
-                </p>
-              )}
-              <a href={message.imageUrl} target="_blank" rel="noreferrer">
-                {/* eslint-disable-next-line @next/next/no-img-element -- user-uploaded, arbitrary dimensions */}
-                <img
-                  src={message.imageUrl}
-                  alt="Shared attachment"
-                  className="max-w-[220px] rounded-lg"
-                />
-              </a>
-              <p className="mt-1 flex items-center gap-1 text-[10px] text-text-faint">
-                {formatTime(message.createdAt)}
-                {message.sender === "user" && (
-                  <MessageTicks deliveredAt={message.deliveredAt} readAt={message.readAt} />
-                )}
-              </p>
-            </div>
-          ) : (
-            <div
-              key={message.id}
-              className={`flex ${message.sender === "user" ? "justify-end" : "justify-start"}`}
-            >
-              <div
-                className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm ${
-                  message.sender === "user"
-                    ? "bg-accent text-white"
-                    : "border border-border bg-panel-raised text-foreground"
-                }`}
-              >
-                {message.sender === "agent" && (
-                  <p className="mb-0.5 text-[10px] tracking-wide text-accent-bright uppercase">
-                    Jessica
-                  </p>
-                )}
-                <p>{message.text}</p>
-                <p
-                  className={`mt-1 flex items-center gap-1 text-[10px] ${
-                    message.sender === "user" ? "text-white/60" : "text-text-faint"
-                  }`}
-                >
-                  {formatTime(message.createdAt)}
-                  {message.sender === "user" && (
-                    <MessageTicks deliveredAt={message.deliveredAt} readAt={message.readAt} />
-                  )}
-                </p>
+      <div className="relative flex-1 overflow-hidden">
+        <div
+          ref={scrollRef}
+          onScroll={handleScroll}
+          className="h-full space-y-3 overflow-y-auto px-4 py-4"
+        >
+          <div className="flex justify-start">
+            <div className="flex max-w-[80%] items-end gap-2">
+              <JessicaAvatar size={24} />
+              <div className="rounded-2xl border border-border bg-panel-raised px-4 py-2.5 text-sm text-foreground">
+                👾 You&apos;re chatting with Jessica, your gamer support crew. Send a message to
+                get started.
               </div>
             </div>
-          ),
-        )}
+          </div>
 
-        {peerTyping && <TypingDots />}
+          {messages.map((message, index) => {
+            const showDateSeparator =
+              index === 0 ||
+              new Date(message.createdAt).toDateString() !==
+                new Date(messages[index - 1].createdAt).toDateString();
+            const { quote, body } = parseQuote(message.text);
+
+            return (
+              <div key={message.id} className="message-in">
+                {showDateSeparator && (
+                  <div className="my-3 flex justify-center">
+                    <span className="rounded-full bg-panel-raised px-3 py-1 text-[10px] text-text-faint">
+                      {formatDateSeparator(message.createdAt)}
+                    </span>
+                  </div>
+                )}
+
+                {message.imageUrl ? (
+                  <div
+                    className={`flex items-end gap-2 ${message.sender === "user" ? "flex-row-reverse" : ""}`}
+                  >
+                    {message.sender === "agent" && <JessicaAvatar size={24} />}
+                    <div className="flex flex-col">
+                      {message.sender === "agent" && (
+                        <p className="mb-0.5 text-[10px] tracking-wide text-accent-bright uppercase">
+                          Jessica
+                        </p>
+                      )}
+                      <a href={message.imageUrl} target="_blank" rel="noreferrer">
+                        {/* eslint-disable-next-line @next/next/no-img-element -- user-uploaded, arbitrary dimensions */}
+                        <img
+                          src={message.imageUrl}
+                          alt="Shared attachment"
+                          className="h-auto w-[220px] rounded-lg bg-border object-cover"
+                        />
+                      </a>
+                      <p className="mt-1 flex items-center gap-1 text-[10px] text-text-faint">
+                        {formatTime(message.createdAt)}
+                        {message.sender === "user" && (
+                          <MessageTicks deliveredAt={message.deliveredAt} readAt={message.readAt} />
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    className={`group flex items-end gap-2 ${message.sender === "user" ? "flex-row-reverse" : ""}`}
+                  >
+                    {message.sender === "agent" && <JessicaAvatar size={24} />}
+                    <div className="flex max-w-[80%] flex-col">
+                      <div
+                        className={`rounded-2xl px-4 py-2.5 text-sm ${
+                          message.sender === "user"
+                            ? message.failed
+                              ? "border-2 border-red-400 bg-accent/60 text-white"
+                              : "bg-accent text-white"
+                            : "border border-border bg-panel-raised text-foreground"
+                        } ${message.pending ? "opacity-70" : ""}`}
+                      >
+                        {message.sender === "agent" && (
+                          <p className="mb-0.5 text-[10px] tracking-wide text-accent-bright uppercase">
+                            Jessica
+                          </p>
+                        )}
+                        {quote && (
+                          <p
+                            className={`mb-1 border-l-2 pl-2 text-xs italic ${
+                              message.sender === "user"
+                                ? "border-white/40 text-white/70"
+                                : "border-accent/40 text-text-dim"
+                            }`}
+                          >
+                            {quote}
+                          </p>
+                        )}
+                        <p className="whitespace-pre-wrap">{body}</p>
+                        <p
+                          className={`mt-1 flex items-center gap-1 text-[10px] ${
+                            message.sender === "user" ? "text-white/60" : "text-text-faint"
+                          }`}
+                        >
+                          {message.pending ? (
+                            "Sending…"
+                          ) : (
+                            <>
+                              {formatTime(message.createdAt)}
+                              {message.sender === "user" && (
+                                <MessageTicks
+                                  deliveredAt={message.deliveredAt}
+                                  readAt={message.readAt}
+                                />
+                              )}
+                            </>
+                          )}
+                        </p>
+                      </div>
+
+                      {message.failed ? (
+                        <button
+                          type="button"
+                          onClick={() => retryMessage(message)}
+                          className="mt-1 self-end text-[10px] text-red-500 underline underline-offset-2"
+                        >
+                          Failed to send — tap to retry
+                        </button>
+                      ) : (
+                        <div
+                          className={`mt-1 flex gap-2 opacity-0 transition group-hover:opacity-100 ${
+                            message.sender === "user" ? "self-end" : "self-start"
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => copyMessage(message)}
+                            aria-label="Copy message"
+                            title="Copy"
+                            className="text-[10px] text-text-faint hover:text-accent-bright focus-visible:opacity-100 focus-visible:outline-none"
+                          >
+                            {copiedId === message.id ? "Copied!" : "Copy"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setReplyingTo(message);
+                              textareaRef.current?.focus();
+                            }}
+                            aria-label="Reply to this message"
+                            title="Reply"
+                            className="text-[10px] text-text-faint hover:text-accent-bright focus-visible:opacity-100 focus-visible:outline-none"
+                          >
+                            Reply
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {peerTyping && (
+            <div className="flex items-end gap-2">
+              <JessicaAvatar size={24} />
+              <TypingDots />
+            </div>
+          )}
+        </div>
+
+        {newMessageCount > 0 && (
+          <button
+            type="button"
+            onClick={scrollToBottom}
+            className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-accent px-4 py-1.5 text-xs font-medium text-white shadow-lg transition hover:bg-accent-bright"
+          >
+            {newMessageCount} new message{newMessageCount > 1 ? "s" : ""} ↓
+          </button>
+        )}
+        {newMessageCount === 0 && showScrollButton && (
+          <button
+            type="button"
+            onClick={scrollToBottom}
+            aria-label="Scroll to bottom"
+            title="Scroll to bottom"
+            className="absolute right-3 bottom-3 flex h-9 w-9 items-center justify-center rounded-full border border-border bg-panel text-text-dim shadow-lg transition hover:text-accent-bright focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
+          >
+            ↓
+          </button>
+        )}
       </div>
+
+      {replyingTo && (
+        <div className="flex items-center justify-between border-t border-border bg-panel-raised px-4 py-2 text-xs text-text-dim">
+          <span className="truncate">
+            Replying to: <span className="italic">{parseQuote(replyingTo.text).body.slice(0, 60)}</span>
+          </span>
+          <button
+            type="button"
+            onClick={() => setReplyingTo(null)}
+            aria-label="Cancel reply"
+            className="ml-2 shrink-0 text-text-faint hover:text-accent-bright"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       <form
         onSubmit={(event) => {
           event.preventDefault();
           sendMessage(draft);
         }}
-        className="flex items-center gap-2 border-t border-border px-3 py-3 pb-[max(env(safe-area-inset-bottom),0.75rem)]"
+        className="flex items-end gap-2 border-t border-border px-3 py-3 pb-[max(env(safe-area-inset-bottom),0.75rem)]"
       >
         <input
           ref={fileInputRef}
@@ -581,19 +911,25 @@ export function SupportChat() {
           onClick={() => fileInputRef.current?.click()}
           disabled={uploading || !visitorId}
           title="Attach an image"
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-border text-lg text-text-dim transition hover:border-accent/40 hover:text-accent-bright active:scale-95 disabled:opacity-50"
+          aria-label="Attach an image"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-border text-lg text-text-dim transition hover:border-accent/40 hover:text-accent-bright focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none active:scale-95 disabled:opacity-50"
         >
           {uploading ? "…" : "📷"}
         </button>
-        <input
+        <textarea
+          ref={textareaRef}
           value={draft}
           onChange={(event) => handleDraftChange(event.target.value)}
+          onKeyDown={handleComposerKeyDown}
           placeholder="Message Jessica…"
-          className="h-11 flex-1 rounded-full border border-border bg-background px-4 text-base text-foreground placeholder:text-text-faint focus:border-accent/50 focus:outline-none"
+          rows={1}
+          aria-label="Message Jessica"
+          className="max-h-32 min-h-11 flex-1 resize-none rounded-2xl border border-border bg-background px-4 py-2.5 text-base text-foreground placeholder:text-text-faint focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none focus:border-accent/50"
         />
         <button
           type="submit"
-          className="h-11 shrink-0 rounded-full bg-accent px-5 text-base text-white transition hover:bg-accent-bright active:scale-95 disabled:opacity-40"
+          aria-label="Send message"
+          className="h-11 shrink-0 rounded-full bg-accent px-5 text-base text-white transition hover:bg-accent-bright focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none active:scale-95 disabled:opacity-40"
           disabled={!draft.trim() || !visitorId}
         >
           Send

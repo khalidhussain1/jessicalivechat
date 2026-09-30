@@ -41,8 +41,19 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
+      suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try {
+              var t = localStorage.getItem('jessica-theme');
+              if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+            } catch (e) {}`,
+          }}
+        />
+      </head>
       <body className="flex min-h-full flex-col bg-background text-foreground">
         <ServiceWorkerRegister />
         <Providers>{children}</Providers>

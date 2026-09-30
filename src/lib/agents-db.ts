@@ -41,3 +41,19 @@ export async function seedDefaultAgents() {
     await createAgent("Agent 2", "agent2", "agent2pass");
   }
 }
+
+// how recently an agent must have polled to be considered "online" for presence purposes
+export const AGENT_ONLINE_WINDOW_MS = 15_000;
+
+export async function touchAgentSeen(agentId: string) {
+  await ensureSchema();
+  await sql`UPDATE agents SET last_seen_at = ${Date.now()} WHERE id = ${agentId}`;
+}
+
+export async function isAnyAgentOnline(): Promise<boolean> {
+  await ensureSchema();
+  const rows = await sql`
+    SELECT COUNT(*)::int as count FROM agents WHERE last_seen_at > ${Date.now() - AGENT_ONLINE_WINDOW_MS}
+  `;
+  return rows[0].count > 0;
+}

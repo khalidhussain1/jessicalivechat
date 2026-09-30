@@ -64,7 +64,7 @@ export function InstallPrompt() {
     <div className="shrink-0 border-b border-accent/30 bg-panel px-4 py-3 md:mb-6 md:rounded-2xl md:border md:border-accent/30 md:border-b-0 md:px-5 md:py-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-sm font-medium text-foreground">Add Jessica Chat to your phone</p>
+          <p className="text-sm font-medium text-foreground">📱 Install Jessica Support</p>
           <p className="text-xs text-text-dim">
             Faster access, saved chats, and a home screen icon for support.
           </p>
@@ -73,6 +73,7 @@ export function InstallPrompt() {
           <button
             type="button"
             onClick={handleShowSteps}
+            aria-label="Install Jessica Support"
             className="rounded-full bg-accent px-4 py-2 text-xs text-white transition hover:bg-accent-bright active:scale-95"
           >
             {deferredPrompt ? "Install" : "Show steps"}

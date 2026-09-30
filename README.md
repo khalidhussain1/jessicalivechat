@@ -1,36 +1,60 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Jessica Chat
 
-## Getting Started
+Live customer care chat for gamers. Customers sign in with Google, email/password,
+or as a guest; a password-protected agent inbox lets a support team reply in
+real time (via polling), with typing indicators, sound alerts, and image
+uploads on both sides. Every reply shows to the customer as "Jessica"
+regardless of which agent actually sent it.
 
-First, run the development server:
+- **Customer chat**: `/support`
+- **Agent inbox**: `/agent`
+
+## Stack
+
+- Next.js (App Router) + Tailwind v4
+- Postgres via [Neon](https://neon.tech) (`@neondatabase/serverless`)
+- [Vercel Blob](https://vercel.com/docs/storage/vercel-blob) for uploaded images
+- [Auth.js](https://authjs.dev) for customer login (Google + credentials)
+- Stateless signed-JWT cookies for agent sessions (`jose`)
+- PWA (installable to a phone home screen) with a manual "Add to phone" prompt
+
+Realtime updates are done by short client-side polling (every ~2s), not
+WebSockets/SSE — chosen so this runs correctly on Vercel's serverless
+functions without needing a separate realtime service.
+
+## Local development
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+vercel env pull   # pulls DATABASE_URL, BLOB_STORE_ID, etc. from the linked Vercel project
+npm run dev -- -p 3005
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Required env vars (see `.env.local`, gitignored):
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Var | Purpose |
+| --- | --- |
+| `DATABASE_URL` | Postgres connection string (Neon) |
+| `BLOB_STORE_ID` | Vercel Blob store (image uploads) |
+| `AUTH_SECRET` | Auth.js session signing |
+| `AGENT_SESSION_SECRET` | Agent login session signing |
+| `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` | Optional — enables "Continue with Google" |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Agents
 
-## Learn More
+Two default agent accounts are seeded automatically on first login attempt:
 
-To learn more about Next.js, take a look at the following resources:
+| Username | Password | Name |
+| --- | --- | --- |
+| `agent1` | `agent1pass` | Agent 1 |
+| `agent2` | `agent2pass` | Agent 2 |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Add another agent:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+node --env-file=.env.local scripts/create-agent.mjs "Agent 3" agent3 aStrongPassword
+```
 
-## Deploy on Vercel
+## Deploy
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Connected to Vercel — pushing to `main` deploys to production automatically.

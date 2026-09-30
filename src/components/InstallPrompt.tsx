@@ -61,7 +61,7 @@ export function InstallPrompt() {
   if (!visible) return null;
 
   return (
-    <div className="border-b border-accent/30 bg-panel px-4 py-3 md:mb-6 md:rounded-2xl md:border md:border-accent/30 md:border-b-0 md:px-5 md:py-4">
+    <div className="shrink-0 border-b border-accent/30 bg-panel px-4 py-3 md:mb-6 md:rounded-2xl md:border md:border-accent/30 md:border-b-0 md:px-5 md:py-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-sm font-medium text-foreground">Add Jessica Chat to your phone</p>

@@ -90,7 +90,7 @@ function AuthGate({
   }
 
   return (
-    <div className="flex h-dvh flex-col items-center justify-center gap-5 bg-panel px-8 text-center md:h-[70vh] md:max-h-[720px] md:rounded-2xl md:border md:border-border">
+    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-5 bg-panel px-8 text-center md:h-[70vh] md:max-h-[720px] md:flex-none md:rounded-2xl md:border md:border-border">
       <div>
         <p className="text-lg font-medium text-foreground">🎮 Jessica</p>
         <p className="mt-1 text-xs text-text-dim">
@@ -322,7 +322,7 @@ export function SupportChat() {
 
   if (guestMode === null || status === "loading") {
     return (
-      <div className="flex h-dvh items-center justify-center bg-panel text-sm text-text-dim md:h-[70vh] md:max-h-[720px] md:rounded-2xl md:border md:border-border">
+      <div className="flex min-h-0 flex-1 items-center justify-center bg-panel text-sm text-text-dim md:h-[70vh] md:max-h-[720px] md:flex-none md:rounded-2xl md:border md:border-border">
         Loading…
       </div>
     );
@@ -343,7 +343,7 @@ export function SupportChat() {
   return (
     <div
       onClick={unlock}
-      className="flex h-dvh flex-col overflow-hidden bg-panel md:h-[70vh] md:max-h-[720px] md:rounded-2xl md:border md:border-border"
+      className="flex min-h-0 flex-1 flex-col overflow-hidden bg-panel md:h-[70vh] md:max-h-[720px] md:flex-none md:rounded-2xl md:border md:border-border"
     >
       <div className="flex items-center justify-between border-b border-border px-4 py-3 pt-[max(env(safe-area-inset-top),0.75rem)] md:pt-3">
         <div>

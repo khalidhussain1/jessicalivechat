@@ -20,28 +20,47 @@ export function useNotificationSound() {
     return ctxRef.current;
   }, []);
 
+  const tone = useCallback(
+    (ctx: AudioContext, startAt: number, frequency: number) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(frequency, startAt);
+      gain.gain.setValueAtTime(0.0001, startAt);
+      gain.gain.exponentialRampToValueAtTime(0.2, startAt + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.25);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(startAt);
+      osc.stop(startAt + 0.3);
+    },
+    [],
+  );
+
   const play = useCallback(() => {
     if (window.localStorage.getItem(MUTE_KEY) === "1") return;
     try {
       const ctx = unlock();
-      const now = ctx.currentTime;
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(880, now);
-      gain.gain.setValueAtTime(0.0001, now);
-      gain.gain.exponentialRampToValueAtTime(0.2, now + 0.01);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.25);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(now);
-      osc.stop(now + 0.3);
+      tone(ctx, ctx.currentTime, 880);
     } catch {
       // sound is a nice-to-have, never let it break the chat
     }
-  }, [unlock]);
+  }, [unlock, tone]);
 
-  return { play, unlock };
+  // a more attention-grabbing double-beep, distinct from the normal message ping
+  const playUrgent = useCallback(() => {
+    if (window.localStorage.getItem(MUTE_KEY) === "1") return;
+    try {
+      const ctx = unlock();
+      const now = ctx.currentTime;
+      tone(ctx, now, 1046);
+      tone(ctx, now + 0.18, 1046);
+    } catch {
+      // sound is a nice-to-have, never let it break the chat
+    }
+  }, [unlock, tone]);
+
+  return { play, playUrgent, unlock };
 }
 
 export function isSoundMuted() {

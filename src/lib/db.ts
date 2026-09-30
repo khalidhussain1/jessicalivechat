@@ -18,9 +18,11 @@ export function ensureSchema(): Promise<void> {
           last_message_at BIGINT NOT NULL,
           agent_read_at BIGINT NOT NULL DEFAULT 0,
           visitor_typing_at BIGINT NOT NULL DEFAULT 0,
-          agent_typing_at BIGINT NOT NULL DEFAULT 0
+          agent_typing_at BIGINT NOT NULL DEFAULT 0,
+          rung_at BIGINT NOT NULL DEFAULT 0
         )
       `;
+      await sql`ALTER TABLE conversations ADD COLUMN IF NOT EXISTS rung_at BIGINT NOT NULL DEFAULT 0`;
 
       await sql`
         CREATE TABLE IF NOT EXISTS messages (
@@ -30,9 +32,13 @@ export function ensureSchema(): Promise<void> {
           sender_name TEXT,
           text TEXT NOT NULL,
           image_url TEXT,
-          created_at BIGINT NOT NULL
+          created_at BIGINT NOT NULL,
+          delivered_at BIGINT,
+          read_at BIGINT
         )
       `;
+      await sql`ALTER TABLE messages ADD COLUMN IF NOT EXISTS delivered_at BIGINT`;
+      await sql`ALTER TABLE messages ADD COLUMN IF NOT EXISTS read_at BIGINT`;
 
       await sql`CREATE INDEX IF NOT EXISTS idx_messages_visitor ON messages (visitor_id, id)`;
 

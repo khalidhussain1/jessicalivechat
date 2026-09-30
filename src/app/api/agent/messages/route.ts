@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AGENT_COOKIE, verifyAgentSessionToken } from "@/lib/agent-auth";
-import { getMessages, getTypingStatus, markConversationRead } from "@/lib/chat-db";
+import {
+  getMessages,
+  getPendingSentMessages,
+  getTypingStatus,
+  markConversationRead,
+  markDelivered,
+  markRead,
+} from "@/lib/chat-db";
 
 export const runtime = "nodejs";
 
@@ -15,12 +22,19 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "visitorId is required" }, { status: 400 });
   }
   const afterId = Number(request.nextUrl.searchParams.get("afterId") ?? "0") || 0;
+  const visible = request.nextUrl.searchParams.get("visible") !== "false";
 
-  const [messages, typing] = await Promise.all([
+  if (visible) {
+    await Promise.all([markRead(visitorId, "agent"), markConversationRead(visitorId)]);
+  } else {
+    await markDelivered(visitorId, "agent");
+  }
+
+  const [messages, statusUpdates, typing] = await Promise.all([
     getMessages(visitorId, afterId),
+    getPendingSentMessages(visitorId, "agent"),
     getTypingStatus(visitorId),
-    markConversationRead(visitorId),
   ]);
 
-  return NextResponse.json({ messages, visitorTypingAt: typing.visitorTypingAt });
+  return NextResponse.json({ messages, statusUpdates, visitorTypingAt: typing.visitorTypingAt });
 }

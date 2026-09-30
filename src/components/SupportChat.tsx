@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useSession, signIn, signOut } from "next-auth/react";
 import { useNotificationSound, isSoundMuted, setSoundMuted } from "@/lib/use-notification-sound";
+import { MessageTicks } from "@/components/MessageTicks";
 
 type Message = {
   id: number;
@@ -12,6 +13,8 @@ type Message = {
   text: string;
   imageUrl: string | null;
   createdAt: number;
+  deliveredAt: number | null;
+  readAt: number | null;
 };
 
 const VISITOR_KEY = "jessica-visitor-id";
@@ -19,6 +22,7 @@ const GUEST_KEY = "jessica-guest-mode";
 const TYPING_THROTTLE_MS = 2000;
 const POLL_INTERVAL_MS = 2000;
 const TYPING_FRESH_MS = 4000;
+const RING_COOLDOWN_MS = 30_000;
 
 const quickActions = [
   "🔐 Account help",
@@ -176,6 +180,9 @@ export function SupportChat() {
   const [peerTyping, setPeerTyping] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [muted, setMuted] = useState(false);
+  const [ringCooldownUntil, setRingCooldownUntil] = useState(0);
+  const [ringRemainingMs, setRingRemainingMs] = useState(0);
+  const [ringSent, setRingSent] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -219,20 +226,39 @@ export function SupportChat() {
 
     async function poll() {
       try {
-        const res = await fetch(`/api/chat/history?visitorId=${id}&afterId=${lastMessageIdRef.current}`);
-        const data: { messages: Message[]; agentTypingAt: number } = await res.json();
+        const visible = document.visibilityState === "visible";
+        const res = await fetch(
+          `/api/chat/history?visitorId=${id}&afterId=${lastMessageIdRef.current}&visible=${visible}`,
+        );
+        const data: {
+          messages: Message[];
+          statusUpdates: Message[];
+          agentTypingAt: number;
+          rungAt: number;
+        } = await res.json();
         if (cancelled) return;
 
         setConnected(true);
         if (data.messages.length > 0) {
           lastMessageIdRef.current = data.messages[data.messages.length - 1].id;
-          setMessages((prev) => [
-            ...prev,
-            ...data.messages.filter((m) => !prev.some((p) => p.id === m.id)),
-          ]);
+        }
+        if (data.messages.length > 0 || data.statusUpdates.length > 0) {
+          setMessages((prev) => {
+            const merged = [
+              ...prev,
+              ...data.messages.filter((m) => !prev.some((p) => p.id === m.id)),
+            ];
+            return merged.map((m) => {
+              const update = data.statusUpdates.find((u) => u.id === m.id);
+              return update ? { ...m, deliveredAt: update.deliveredAt, readAt: update.readAt } : m;
+            });
+          });
           if (data.messages.some((m) => m.sender === "agent")) play();
         }
         setPeerTyping(Date.now() - data.agentTypingAt < TYPING_FRESH_MS);
+        if (data.rungAt > 0) {
+          setRingCooldownUntil((prev) => Math.max(prev, data.rungAt + RING_COOLDOWN_MS));
+        }
       } catch {
         if (!cancelled) setConnected(false);
       }
@@ -246,6 +272,16 @@ export function SupportChat() {
       clearInterval(interval);
     };
   }, [ready, session?.user?.id, play]);
+
+  useEffect(() => {
+    function update() {
+      setRingRemainingMs(Math.max(0, ringCooldownUntil - Date.now()));
+    }
+    update();
+    if (ringCooldownUntil <= Date.now()) return;
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, [ringCooldownUntil]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -320,6 +356,29 @@ export function SupportChat() {
     setSoundMuted(next);
   }
 
+  async function handleRing() {
+    if (!visitorId || Date.now() < ringCooldownUntil) return;
+    try {
+      const res = await fetch("/api/chat/ring", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ visitorId }),
+      });
+      const data: { ok?: boolean; rungAt?: number; retryAfterMs?: number } = await res.json();
+      if (res.ok && data.rungAt) {
+        setRingCooldownUntil(data.rungAt + RING_COOLDOWN_MS);
+        setRingSent(true);
+        setTimeout(() => setRingSent(false), 2000);
+      } else if (data.retryAfterMs) {
+        setRingCooldownUntil(Date.now() + data.retryAfterMs);
+      }
+    } catch {
+      // no-op; the button just stays enabled and they can try again
+    }
+  }
+
+  const ringOnCooldown = ringRemainingMs > 0;
+
   if (guestMode === null || status === "loading") {
     return (
       <div className="flex min-h-0 flex-1 items-center justify-center bg-panel text-sm text-text-dim md:h-[70vh] md:max-h-[720px] md:flex-none md:rounded-2xl md:border md:border-border">
@@ -352,7 +411,26 @@ export function SupportChat() {
             {connected ? `Chatting as ${displayName}` : "Connecting…"}
           </p>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={handleRing}
+            disabled={ringOnCooldown}
+            title="Ring for urgent help"
+            className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium whitespace-nowrap transition active:scale-95 ${
+              ringSent
+                ? "border-accent bg-accent/10 text-accent-bright"
+                : ringOnCooldown
+                  ? "border-border text-text-faint"
+                  : "border-amber-500/50 text-amber-600 hover:border-amber-500 hover:bg-amber-500/10"
+            }`}
+          >
+            {ringSent
+              ? "🔔 Sent!"
+              : ringOnCooldown
+                ? `🔔 ${Math.ceil(ringRemainingMs / 1000)}s`
+                : "🔔 Ring"}
+          </button>
           <button
             type="button"
             onClick={toggleMute}
@@ -413,7 +491,12 @@ export function SupportChat() {
                   className="max-w-[220px] rounded-lg"
                 />
               </a>
-              <p className="mt-1 text-[10px] text-text-faint">{formatTime(message.createdAt)}</p>
+              <p className="mt-1 flex items-center gap-1 text-[10px] text-text-faint">
+                {formatTime(message.createdAt)}
+                {message.sender === "user" && (
+                  <MessageTicks deliveredAt={message.deliveredAt} readAt={message.readAt} />
+                )}
+              </p>
             </div>
           ) : (
             <div
@@ -434,11 +517,14 @@ export function SupportChat() {
                 )}
                 <p>{message.text}</p>
                 <p
-                  className={`mt-1 text-[10px] ${
+                  className={`mt-1 flex items-center gap-1 text-[10px] ${
                     message.sender === "user" ? "text-white/60" : "text-text-faint"
                   }`}
                 >
                   {formatTime(message.createdAt)}
+                  {message.sender === "user" && (
+                    <MessageTicks deliveredAt={message.deliveredAt} readAt={message.readAt} />
+                  )}
                 </p>
               </div>
             </div>

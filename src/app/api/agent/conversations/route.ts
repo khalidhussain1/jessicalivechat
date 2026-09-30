@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AGENT_COOKIE, verifyAgentSessionToken } from "@/lib/agent-auth";
-import { listConversations } from "@/lib/chat-db";
+import { listConversations, markAllUserMessagesDelivered } from "@/lib/chat-db";
 
 export const runtime = "nodejs";
 
@@ -10,5 +10,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  await markAllUserMessagesDelivered();
   return NextResponse.json({ conversations: await listConversations() });
 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useNotificationSound, isSoundMuted, setSoundMuted } from "@/lib/use-notification-sound";
+import { MessageTicks } from "@/components/MessageTicks";
 
 type Conversation = {
   visitorId: string;
@@ -9,6 +10,7 @@ type Conversation = {
   createdAt: number;
   lastMessageAt: number;
   agentReadAt: number;
+  rungAt: number;
   lastMessageText: string | null;
   lastMessageSender: "user" | "agent" | null;
   lastMessageImage: boolean;
@@ -23,6 +25,8 @@ type Message = {
   text: string;
   imageUrl: string | null;
   createdAt: number;
+  deliveredAt: number | null;
+  readAt: number | null;
 };
 
 type AgentInfo = { id: string; name: string };
@@ -30,6 +34,7 @@ type AgentInfo = { id: string; name: string };
 const TYPING_THROTTLE_MS = 2000;
 const POLL_INTERVAL_MS = 2000;
 const TYPING_FRESH_MS = 4000;
+const RING_ACTIVE_MS = 60_000;
 
 function formatTime(ms: number) {
   return new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
@@ -43,6 +48,10 @@ function formatRelativeTime(ms: number) {
   const hr = Math.floor(min / 60);
   if (hr < 24) return `${hr}h ago`;
   return `${Math.floor(hr / 24)}d ago`;
+}
+
+function isRinging(rungAt: number) {
+  return rungAt > 0 && Date.now() - rungAt < RING_ACTIVE_MS;
 }
 
 function initialsFor(label: string) {
@@ -85,8 +94,9 @@ export default function AgentPage() {
   const lastTypingSentAt = useRef(0);
   const lastMessageIdRef = useRef(0);
   const prevLastMessageAtRef = useRef<Record<string, number>>({});
+  const prevRungAtRef = useRef<Record<string, number>>({});
   const hasPolledConversationsOnceRef = useRef(false);
-  const { play, unlock } = useNotificationSound();
+  const { play, playUrgent, unlock } = useNotificationSound();
 
   useEffect(() => {
     selectedVisitorIdRef.current = selectedVisitorId;
@@ -123,9 +133,10 @@ export default function AgentPage() {
         if (cancelled) return;
 
         let shouldPlay = false;
+        let shouldPlayUrgent = false;
         for (const c of data.conversations) {
-          const prev = prevLastMessageAtRef.current[c.visitorId];
-          const isNewUserMessage = c.lastMessageSender === "user" && c.lastMessageAt !== prev;
+          const prevMessageAt = prevLastMessageAtRef.current[c.visitorId];
+          const isNewUserMessage = c.lastMessageSender === "user" && c.lastMessageAt !== prevMessageAt;
           if (
             hasPolledConversationsOnceRef.current &&
             isNewUserMessage &&
@@ -134,9 +145,16 @@ export default function AgentPage() {
             shouldPlay = true;
           }
           prevLastMessageAtRef.current[c.visitorId] = c.lastMessageAt;
+
+          const prevRungAt = prevRungAtRef.current[c.visitorId];
+          if (hasPolledConversationsOnceRef.current && c.rungAt > 0 && c.rungAt !== prevRungAt) {
+            shouldPlayUrgent = true;
+          }
+          prevRungAtRef.current[c.visitorId] = c.rungAt;
         }
         hasPolledConversationsOnceRef.current = true;
-        if (shouldPlay) play();
+        if (shouldPlayUrgent) playUrgent();
+        else if (shouldPlay) play();
 
         setConversations(data.conversations);
       } catch {
@@ -150,7 +168,7 @@ export default function AgentPage() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [agent, play]);
+  }, [agent, play, playUrgent]);
 
   // poll the open conversation's messages + typing status
   useEffect(() => {
@@ -159,22 +177,35 @@ export default function AgentPage() {
 
     async function pollMessages() {
       try {
+        const visible = document.visibilityState === "visible";
         const res = await fetch(
-          `/api/agent/messages?visitorId=${selectedVisitorId}&afterId=${lastMessageIdRef.current}`,
+          `/api/agent/messages?visitorId=${selectedVisitorId}&afterId=${lastMessageIdRef.current}&visible=${visible}`,
         );
         if (res.status === 401) {
           if (!cancelled) setAgent(null);
           return;
         }
-        const data: { messages: Message[]; visitorTypingAt: number } = await res.json();
+        const data: {
+          messages: Message[];
+          statusUpdates: Message[];
+          visitorTypingAt: number;
+        } = await res.json();
         if (cancelled) return;
 
         if (data.messages.length > 0) {
           lastMessageIdRef.current = data.messages[data.messages.length - 1].id;
-          setMessages((prev) => [
-            ...prev,
-            ...data.messages.filter((m) => !prev.some((p) => p.id === m.id)),
-          ]);
+        }
+        if (data.messages.length > 0 || data.statusUpdates.length > 0) {
+          setMessages((prev) => {
+            const merged = [
+              ...prev,
+              ...data.messages.filter((m) => !prev.some((p) => p.id === m.id)),
+            ];
+            return merged.map((m) => {
+              const update = data.statusUpdates.find((u) => u.id === m.id);
+              return update ? { ...m, deliveredAt: update.deliveredAt, readAt: update.readAt } : m;
+            });
+          });
           if (data.messages.some((m) => m.sender === "user")) play();
         }
         setPeerTyping(Date.now() - data.visitorTypingAt < TYPING_FRESH_MS);
@@ -391,7 +422,7 @@ export default function AgentPage() {
                 onClick={() => selectConversation(conversation.visitorId)}
                 className={`flex w-full items-start gap-3 border-b border-border px-4 py-3 text-left transition hover:bg-panel-raised ${
                   selectedVisitorId === conversation.visitorId ? "bg-panel-raised" : ""
-                }`}
+                } ${isRinging(conversation.rungAt) ? "bg-amber-500/10" : ""}`}
               >
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-border text-[11px] font-medium text-text-dim">
                   {initialsFor(conversation.visitorName ?? conversation.visitorId)}
@@ -401,9 +432,15 @@ export default function AgentPage() {
                     <span className="truncate text-xs text-text-dim">
                       {conversation.visitorName ?? conversation.visitorId.slice(0, 8)}
                     </span>
-                    <span className="shrink-0 text-[10px] text-text-faint">
-                      {formatRelativeTime(conversation.lastMessageAt)}
-                    </span>
+                    {isRinging(conversation.rungAt) ? (
+                      <span className="shrink-0 text-[10px] font-medium text-amber-600">
+                        🔔 Ringing
+                      </span>
+                    ) : (
+                      <span className="shrink-0 text-[10px] text-text-faint">
+                        {formatRelativeTime(conversation.lastMessageAt)}
+                      </span>
+                    )}
                   </div>
                   <p
                     className={`mt-0.5 truncate text-sm ${
@@ -417,7 +454,11 @@ export default function AgentPage() {
                   </p>
                 </div>
                 {conversation.unread && (
-                  <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-accent" />
+                  <span
+                    className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${
+                      isRinging(conversation.rungAt) ? "animate-pulse bg-amber-500" : "bg-accent"
+                    }`}
+                  />
                 )}
               </button>
             ))}
@@ -453,6 +494,12 @@ export default function AgentPage() {
                 </div>
               </div>
 
+              {selectedConversation && isRinging(selectedConversation.rungAt) && (
+                <div className="flex items-center gap-2 border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs font-medium text-amber-700 md:px-6">
+                  🔔 This customer rang for urgent help
+                </div>
+              )}
+
               <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-4 md:px-6">
                 {messages.map((message) =>
                   message.imageUrl ? (
@@ -468,8 +515,11 @@ export default function AgentPage() {
                           className="max-w-[220px] rounded-lg"
                         />
                       </a>
-                      <p className="mt-1 text-[10px] text-text-faint">
+                      <p className="mt-1 flex items-center gap-1 text-[10px] text-text-faint">
                         {formatTime(message.createdAt)}
+                        {message.sender === "agent" && (
+                          <MessageTicks deliveredAt={message.deliveredAt} readAt={message.readAt} />
+                        )}
                       </p>
                     </div>
                   ) : (
@@ -486,11 +536,14 @@ export default function AgentPage() {
                     >
                       <p>{message.text}</p>
                       <p
-                        className={`mt-1 text-[10px] ${
+                        className={`mt-1 flex items-center gap-1 text-[10px] ${
                           message.sender === "agent" ? "text-white/60" : "text-text-faint"
                         }`}
                       >
                         {formatTime(message.createdAt)}
+                        {message.sender === "agent" && (
+                          <MessageTicks deliveredAt={message.deliveredAt} readAt={message.readAt} />
+                        )}
                       </p>
                     </div>
                   </div>

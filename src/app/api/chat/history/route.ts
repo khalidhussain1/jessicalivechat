@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMessages, getTypingStatus } from "@/lib/chat-db";
+import {
+  getMessages,
+  getPendingSentMessages,
+  getTypingStatus,
+  markDelivered,
+  markRead,
+} from "@/lib/chat-db";
 
 export const runtime = "nodejs";
 
@@ -9,11 +15,24 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "visitorId is required" }, { status: 400 });
   }
   const afterId = Number(request.nextUrl.searchParams.get("afterId") ?? "0") || 0;
+  const visible = request.nextUrl.searchParams.get("visible") !== "false";
 
-  const [messages, typing] = await Promise.all([
+  if (visible) {
+    await markRead(visitorId, "user");
+  } else {
+    await markDelivered(visitorId, "user");
+  }
+
+  const [messages, statusUpdates, typing] = await Promise.all([
     getMessages(visitorId, afterId),
+    getPendingSentMessages(visitorId, "user"),
     getTypingStatus(visitorId),
   ]);
 
-  return NextResponse.json({ messages, agentTypingAt: typing.agentTypingAt });
+  return NextResponse.json({
+    messages,
+    statusUpdates,
+    agentTypingAt: typing.agentTypingAt,
+    rungAt: typing.rungAt,
+  });
 }

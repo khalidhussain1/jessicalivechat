@@ -14,12 +14,6 @@ export default function Home() {
         >
           Open support chat
         </Link>
-        <Link
-          href="/agent"
-          className="rounded-full border border-border px-6 py-3 text-sm text-text-dim transition hover:border-accent/40 hover:text-accent-bright"
-        >
-          Agent inbox
-        </Link>
       </div>
     </div>
   );

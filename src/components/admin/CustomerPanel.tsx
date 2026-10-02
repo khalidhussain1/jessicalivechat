@@ -74,7 +74,7 @@ export function CustomerPanel({
   const assignedAgent = roster.find((a) => a.id === conversation.assignedAgentId);
 
   return (
-    <div className="absolute inset-0 z-20 flex h-full w-full flex-col overflow-y-auto border-l border-border bg-panel p-4 md:static md:z-auto md:w-80">
+    <div className="absolute inset-0 z-20 flex h-full w-full flex-col overflow-y-auto border-l border-border bg-panel p-4 md:static md:z-auto md:w-80 md:shrink-0">
       <div className="mb-4 flex items-center justify-between">
         <p className="text-sm font-medium text-foreground">Customer details</p>
         {onClose && (
@@ -102,17 +102,17 @@ export function CustomerPanel({
       </div>
 
       <dl className="mb-4 space-y-1.5 text-xs">
-        <div className="flex justify-between gap-2">
-          <dt className="text-text-faint">Ticket</dt>
-          <dd className="text-text-dim">#{conversation.ticketNo}</dd>
+        <div className="flex items-baseline justify-between gap-2">
+          <dt className="shrink-0 text-text-faint">Ticket</dt>
+          <dd className="truncate text-right text-text-dim">#{conversation.ticketNo}</dd>
         </div>
-        <div className="flex justify-between gap-2">
-          <dt className="text-text-faint">Started</dt>
-          <dd className="text-text-dim">{formatDateTime(conversation.createdAt)}</dd>
+        <div className="flex items-baseline justify-between gap-2">
+          <dt className="shrink-0 text-text-faint">Started</dt>
+          <dd className="truncate text-right text-text-dim">{formatDateTime(conversation.createdAt)}</dd>
         </div>
-        <div className="flex justify-between gap-2">
-          <dt className="text-text-faint">Last activity</dt>
-          <dd className="text-text-dim">{formatDateTime(conversation.lastMessageAt)}</dd>
+        <div className="flex items-baseline justify-between gap-2">
+          <dt className="shrink-0 text-text-faint">Last activity</dt>
+          <dd className="truncate text-right text-text-dim">{formatDateTime(conversation.lastMessageAt)}</dd>
         </div>
       </dl>
 

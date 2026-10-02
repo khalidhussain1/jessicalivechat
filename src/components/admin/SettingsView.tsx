@@ -530,7 +530,7 @@ export function SettingsView({ canManageMaintenance }: { canManageMaintenance: b
   ];
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 md:p-6">
+    <div className="min-h-0 flex-1 overflow-y-auto bg-panel p-4 md:rounded-2xl md:border md:border-border md:p-6 md:shadow-lg md:shadow-black/10">
       <div className="mb-4 flex flex-wrap gap-1.5">
         {TABS.map((t) => (
           <button

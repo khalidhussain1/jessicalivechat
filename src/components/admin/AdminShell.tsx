@@ -33,19 +33,36 @@ type View =
 
 type NavItem = { key: View; label: string; minRole?: "admin" | "super_admin" };
 
-const NAV_ITEMS: NavItem[] = [
-  { key: "dashboard", label: "Dashboard" },
-  { key: "inbox", label: "Inbox" },
-  { key: "customers", label: "Customers", minRole: "admin" },
-  { key: "announcements", label: "Announcements", minRole: "admin" },
-  { key: "quick_questions", label: "Quick Questions", minRole: "admin" },
-  { key: "faqs", label: "FAQs", minRole: "admin" },
-  { key: "canned_replies", label: "Canned Replies", minRole: "admin" },
-  { key: "agents", label: "Agents", minRole: "admin" },
-  { key: "settings", label: "Settings", minRole: "admin" },
-  { key: "analytics", label: "Analytics", minRole: "admin" },
-  { key: "audit", label: "Audit Log", minRole: "admin" },
+const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
+  {
+    label: "Workspace",
+    items: [
+      { key: "dashboard", label: "Dashboard" },
+      { key: "inbox", label: "Inbox" },
+      { key: "customers", label: "Customers", minRole: "admin" },
+    ],
+  },
+  {
+    label: "Content",
+    items: [
+      { key: "announcements", label: "Announcements", minRole: "admin" },
+      { key: "quick_questions", label: "Quick Questions", minRole: "admin" },
+      { key: "faqs", label: "FAQs", minRole: "admin" },
+      { key: "canned_replies", label: "Canned Replies", minRole: "admin" },
+    ],
+  },
+  {
+    label: "System",
+    items: [
+      { key: "agents", label: "Agents", minRole: "admin" },
+      { key: "settings", label: "Settings", minRole: "admin" },
+      { key: "analytics", label: "Analytics", minRole: "admin" },
+      { key: "audit", label: "Audit Log", minRole: "admin" },
+    ],
+  },
 ];
+
+const NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((g) => g.items);
 
 export function AdminShell({ agent, onLogout }: { agent: AgentInfo; onLogout: () => void }) {
   const [view, setView] = useState<View>("dashboard");
@@ -176,11 +193,10 @@ export function AdminShell({ agent, onLogout }: { agent: AgentInfo; onLogout: ()
   }
 
   const unreadInboxCount = conversations.filter((c) => c.unread).length;
-  const visibleNavItems = NAV_ITEMS.filter((item) => !item.minRole || hasRole(agent, item.minRole));
   const viewTitle = NAV_ITEMS.find((i) => i.key === view)?.label ?? "Dashboard";
 
   return (
-    <div onClick={unlock} className="flex h-dvh w-full flex-col md:mx-auto md:h-auto md:max-w-6xl md:px-6 md:py-10">
+    <div onClick={unlock} className="flex h-dvh w-full flex-col md:px-8 md:py-6">
       <div className="flex items-center justify-between border-b border-border px-4 py-3 pt-[max(env(safe-area-inset-top),0.75rem)] md:mb-6 md:border-none md:px-0 md:pt-0">
         <div className="flex items-center gap-2">
           <button
@@ -240,36 +256,47 @@ export function AdminShell({ agent, onLogout }: { agent: AgentInfo; onLogout: ()
         </div>
       )}
 
-      <div className="flex flex-1 gap-4 overflow-hidden md:h-[70vh]">
+      <div className="flex min-h-0 flex-1 gap-4 overflow-hidden">
         <nav
-          className={`shrink-0 flex-col gap-1 overflow-y-auto border-r border-border bg-panel p-2 md:flex md:w-44 md:rounded-2xl md:border ${
+          className={`shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-border bg-panel p-2 md:flex md:w-56 md:rounded-2xl md:border ${
             navOpen ? "absolute inset-x-0 top-[72px] z-10 flex max-h-[70vh] border-b" : "hidden"
           }`}
         >
-          {visibleNavItems.map((item) => (
-            <button
-              key={item.key}
-              type="button"
-              onClick={() => {
-                setView(item.key);
-                setNavOpen(false);
-              }}
-              className={`flex items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition ${
-                view === item.key ? "bg-accent text-white" : "text-text-dim hover:bg-panel-raised"
-              }`}
-            >
-              {item.label}
-              {item.key === "inbox" && unreadInboxCount > 0 && (
-                <span
-                  className={`ml-2 rounded-full px-1.5 py-0.5 text-[10px] ${
-                    view === item.key ? "bg-white/20 text-white" : "bg-accent text-white"
-                  }`}
-                >
-                  {unreadInboxCount}
-                </span>
-              )}
-            </button>
-          ))}
+          {NAV_GROUPS.map((group) => {
+            const items = group.items.filter((item) => !item.minRole || hasRole(agent, item.minRole));
+            if (items.length === 0) return null;
+            return (
+              <div key={group.label} className="mb-1">
+                <p className="px-3 pt-3 pb-1 text-[10px] font-semibold tracking-wide text-text-faint uppercase">
+                  {group.label}
+                </p>
+                {items.map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => {
+                      setView(item.key);
+                      setNavOpen(false);
+                    }}
+                    className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition ${
+                      view === item.key ? "bg-accent text-white" : "text-text-dim hover:bg-panel-raised"
+                    }`}
+                  >
+                    {item.label}
+                    {item.key === "inbox" && unreadInboxCount > 0 && (
+                      <span
+                        className={`ml-2 rounded-full px-1.5 py-0.5 text-[10px] ${
+                          view === item.key ? "bg-white/20 text-white" : "bg-accent text-white"
+                        }`}
+                      >
+                        {unreadInboxCount}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            );
+          })}
         </nav>
 
         {view === "dashboard" && <DashboardView />}

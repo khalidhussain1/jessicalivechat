@@ -78,7 +78,7 @@ export function DashboardView() {
   const statusMax = Math.max(stats.open, stats.pending, stats.resolved, 1);
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 md:p-6">
+    <div className="min-h-0 flex-1 overflow-y-auto bg-panel p-4 md:rounded-2xl md:border md:border-border md:p-6 md:shadow-lg md:shadow-black/10">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <StatCard label="Total conversations" value={stats.total} />
         <StatCard label="Unread conversations" value={stats.unreadConversations} tone={stats.unreadConversations > 0 ? "accent" : undefined} />

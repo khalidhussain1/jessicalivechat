@@ -343,9 +343,9 @@ export function InboxView({
   const selectedConversation = conversations.find((c) => c.visitorId === selectedVisitorId);
 
   return (
-    <div className="flex flex-1 overflow-hidden bg-panel md:h-[70vh] md:flex-none md:rounded-2xl md:border md:border-border md:shadow-lg md:shadow-black/10">
+    <div className="flex min-h-0 flex-1 overflow-hidden bg-panel md:rounded-2xl md:border md:border-border md:shadow-lg md:shadow-black/10">
       <div
-        className={`w-full shrink-0 flex-col border-border md:flex md:w-72 md:border-r ${
+        className={`w-full shrink-0 flex-col border-border md:flex md:w-80 md:border-r ${
           selectedVisitorId ? "hidden md:flex" : "flex"
         }`}
       >
@@ -377,7 +377,10 @@ export function InboxView({
 
         <div className="flex-1 overflow-y-auto">
           {filteredConversations.length === 0 && (
-            <p className="px-4 py-6 text-xs text-text-faint">No conversations yet.</p>
+            <div className="flex flex-col items-center gap-2 px-4 py-12 text-center text-text-faint">
+              <span className="text-3xl" aria-hidden="true">💬</span>
+              <p className="text-sm">No conversations yet.</p>
+            </div>
           )}
           {filteredConversations.map((conversation) => {
             const badge = statusBadge(conversation.status);
@@ -386,16 +389,16 @@ export function InboxView({
                 key={conversation.visitorId}
                 type="button"
                 onClick={() => setSelectedVisitorId(conversation.visitorId)}
-                className={`flex w-full items-start gap-3 border-b border-border px-4 py-3 text-left transition hover:bg-panel-raised ${
+                className={`flex w-full items-start gap-3 border-b border-border px-4 py-3.5 text-left transition hover:bg-panel-raised ${
                   selectedVisitorId === conversation.visitorId ? "bg-panel-raised" : ""
                 } ${conversation.ringActive ? "bg-amber-500/10" : ""}`}
               >
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-border text-[11px] font-medium text-text-dim">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-border text-xs font-medium text-text-dim">
                   {initialsFor(conversation.visitorName ?? conversation.visitorId)}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="truncate text-xs font-medium text-text-dim">
+                    <span className="truncate text-sm font-semibold text-foreground">
                       {conversation.visitorName ?? conversation.visitorId.slice(0, 8)}
                     </span>
                     {conversation.ringActive ? (
@@ -464,9 +467,10 @@ export function InboxView({
 
       <div className={`min-w-0 flex-1 flex-col md:flex ${selectedVisitorId ? "flex" : "hidden md:flex"}`}>
         {!selectedVisitorId ? (
-          <div className="hidden flex-1 flex-col items-center justify-center gap-3 bg-panel-raised/40 text-text-faint md:flex">
-            <span className="text-4xl">💬</span>
-            <p className="text-sm">Select a conversation to reply</p>
+          <div className="hidden flex-1 flex-col items-center justify-center gap-2 bg-panel-raised/40 text-text-faint md:flex">
+            <span className="text-5xl" aria-hidden="true">💬</span>
+            <p className="text-sm font-medium text-text-dim">Select a conversation</p>
+            <p className="text-xs">Replies and customer details will appear here</p>
           </div>
         ) : (
           <>

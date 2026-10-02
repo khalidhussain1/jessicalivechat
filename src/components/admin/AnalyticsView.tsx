@@ -44,7 +44,7 @@ export function AnalyticsView() {
   const maxHourCount = Math.max(...analytics.mostActiveHours.map((h) => h.count), 1);
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 md:p-6">
+    <div className="min-h-0 flex-1 overflow-y-auto bg-panel p-4 md:rounded-2xl md:border md:border-border md:p-6 md:shadow-lg md:shadow-black/10">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <StatCard label="Conversations today" value={analytics.conversationsToday} />
         <StatCard label="Conversations this week" value={analytics.conversationsThisWeek} />

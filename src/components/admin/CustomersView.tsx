@@ -49,7 +49,7 @@ export function CustomersView({ conversations }: { conversations: Conversation[]
   );
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 md:p-6">
+    <div className="min-h-0 flex-1 overflow-y-auto bg-panel p-4 md:rounded-2xl md:border md:border-border md:p-6 md:shadow-lg md:shadow-black/10">
       <input
         value={search}
         onChange={(e) => setSearch(e.target.value)}

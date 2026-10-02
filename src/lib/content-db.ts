@@ -46,11 +46,11 @@ export type CannedReply = {
 // message sent is the label itself (with its icon), exactly as it is today, so migrating
 // to this DB-backed system changes nothing for "Game question" or any other default
 // button until an admin deliberately edits one
-const DEFAULT_QUICK_QUESTIONS: { icon: string; label: string; message: string }[] = [
-  { icon: "👤", label: "I need account?", message: "👤 I need account?" },
-  { icon: "💳", label: "Payment method?", message: "💳 Payment method?" },
-  { icon: "💬", label: "Is anyone available to chat?", message: "💬 Is anyone available to chat?" },
-  { icon: "🎮", label: "Game question", message: "🎮 Game question" },
+const DEFAULT_QUICK_QUESTIONS: { seedKey: string; icon: string; label: string; message: string }[] = [
+  { seedKey: "need_account", icon: "👤", label: "I need account?", message: "👤 I need account?" },
+  { seedKey: "payment_method", icon: "💳", label: "Payment method?", message: "💳 Payment method?" },
+  { seedKey: "anyone_available", icon: "💬", label: "Is anyone available to chat?", message: "💬 Is anyone available to chat?" },
+  { seedKey: "game_question", icon: "🎮", label: "Game question", message: "🎮 Game question" },
 ];
 
 function toAnnouncement(row: Record<string, unknown>): Announcement {
@@ -163,17 +163,22 @@ const QUICK_QUESTION_FIELDS = `
   id, icon, label, message, enabled, sort_order as "sortOrder", created_at as "createdAt"
 `;
 
+// seed_key is UNIQUE, so this is safe against concurrent first-requests racing each
+// other (no "check count, then insert" gap where both could pass the check and double-insert).
+// Existing rows created before seed_key existed are backfilled by label so they're
+// recognized as already-seeded instead of getting a duplicate set inserted alongside them.
 async function seedQuickQuestionsIfEmpty() {
-  const rows = await sql`SELECT COUNT(*)::int as count FROM quick_questions`;
-  if (rows[0].count === 0) {
-    const now = Date.now();
-    for (let i = 0; i < DEFAULT_QUICK_QUESTIONS.length; i++) {
-      const q = DEFAULT_QUICK_QUESTIONS[i];
-      await sql`
-        INSERT INTO quick_questions (icon, label, message, enabled, sort_order, created_at)
-        VALUES (${q.icon}, ${q.label}, ${q.message}, true, ${i}, ${now})
-      `;
-    }
+  const now = Date.now();
+  for (let i = 0; i < DEFAULT_QUICK_QUESTIONS.length; i++) {
+    const q = DEFAULT_QUICK_QUESTIONS[i];
+    await sql`
+      UPDATE quick_questions SET seed_key = ${q.seedKey} WHERE label = ${q.label} AND seed_key IS NULL
+    `;
+    await sql`
+      INSERT INTO quick_questions (icon, label, message, enabled, sort_order, created_at, seed_key)
+      VALUES (${q.icon}, ${q.label}, ${q.message}, true, ${i}, ${now}, ${q.seedKey})
+      ON CONFLICT (seed_key) DO NOTHING
+    `;
   }
 }
 

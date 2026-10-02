@@ -126,9 +126,11 @@ export function ensureSchema(): Promise<void> {
           message TEXT NOT NULL,
           enabled BOOLEAN NOT NULL DEFAULT true,
           sort_order INT NOT NULL DEFAULT 0,
-          created_at BIGINT NOT NULL
+          created_at BIGINT NOT NULL,
+          seed_key TEXT UNIQUE
         )
       `;
+      await sql`ALTER TABLE quick_questions ADD COLUMN IF NOT EXISTS seed_key TEXT UNIQUE`;
 
       await sql`
         CREATE TABLE IF NOT EXISTS faqs (
@@ -251,9 +253,11 @@ export function ensureSchema(): Promise<void> {
           reward_type TEXT NOT NULL DEFAULT 'points',
           reward_label TEXT NOT NULL DEFAULT '100 points',
           enabled BOOLEAN NOT NULL DEFAULT true,
-          created_at BIGINT NOT NULL
+          created_at BIGINT NOT NULL,
+          seed_key TEXT UNIQUE
         )
       `;
+      await sql`ALTER TABLE daily_challenges ADD COLUMN IF NOT EXISTS seed_key TEXT UNIQUE`;
 
       await sql`
         CREATE TABLE IF NOT EXISTS daily_challenge_completions (
@@ -266,6 +270,44 @@ export function ensureSchema(): Promise<void> {
           UNIQUE (visitor_id, challenge_id, challenge_date)
         )
       `;
+
+      await sql`
+        CREATE TABLE IF NOT EXISTS tasks (
+          id BIGSERIAL PRIMARY KEY,
+          title TEXT NOT NULL,
+          description TEXT NOT NULL DEFAULT '',
+          type TEXT NOT NULL DEFAULT 'manual_proof',
+          instructions TEXT NOT NULL DEFAULT '',
+          reward_type TEXT NOT NULL DEFAULT 'points',
+          reward_label TEXT NOT NULL DEFAULT '',
+          verification_method TEXT NOT NULL DEFAULT 'manual',
+          repeatable BOOLEAN NOT NULL DEFAULT false,
+          deadline BIGINT,
+          enabled BOOLEAN NOT NULL DEFAULT true,
+          sort_order INT NOT NULL DEFAULT 0,
+          created_at BIGINT NOT NULL,
+          seed_key TEXT UNIQUE
+        )
+      `;
+      await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS seed_key TEXT UNIQUE`;
+
+      await sql`
+        CREATE TABLE IF NOT EXISTS task_submissions (
+          id BIGSERIAL PRIMARY KEY,
+          visitor_id TEXT NOT NULL,
+          task_id BIGINT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+          proof_text TEXT,
+          proof_image_url TEXT,
+          status TEXT NOT NULL DEFAULT 'pending',
+          reviewed_by TEXT,
+          reviewed_at BIGINT,
+          reward_id BIGINT REFERENCES rewards(id),
+          submission_date TEXT NOT NULL,
+          created_at BIGINT NOT NULL
+        )
+      `;
+      await sql`CREATE INDEX IF NOT EXISTS idx_task_submissions_visitor ON task_submissions (visitor_id, task_id)`;
+      await sql`CREATE INDEX IF NOT EXISTS idx_task_submissions_status ON task_submissions (status, created_at)`;
     })();
   }
   return schemaReady;

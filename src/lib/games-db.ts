@@ -48,25 +48,26 @@ const DEFAULT_TRIVIA_QUESTIONS: { question: string; options: string[]; correctIn
   { question: "What does 'AFK' stand for?", options: ["Away From Keyboard", "At Full Koncentration", "Attack From Killzone"], correctIndex: 0 },
 ];
 
+// `key` is UNIQUE, so ON CONFLICT DO NOTHING makes this safe against concurrent
+// first-requests racing each other (no "check count, then insert" gap to lose)
 async function seedGamesIfEmpty() {
-  const rows = await sql`SELECT COUNT(*)::int as count FROM games`;
-  if (rows[0].count === 0) {
-    const now = Date.now();
-    for (const g of DEFAULT_GAMES) {
-      const inserted = await sql`
-        INSERT INTO games (key, title, description, icon, reward_type, reward_label, enabled, sort_order, created_at)
-        VALUES (${g.key}, ${g.title}, ${g.description}, ${g.icon}, ${g.rewardType}, ${g.rewardLabel}, ${g.enabled}, ${g.sortOrder}, ${now})
-        RETURNING id
-      `;
-      if (g.key === "trivia") {
-        const gameId = inserted[0].id;
-        for (let i = 0; i < DEFAULT_TRIVIA_QUESTIONS.length; i++) {
-          const q = DEFAULT_TRIVIA_QUESTIONS[i];
-          await sql`
-            INSERT INTO quiz_questions (game_id, question, options, correct_index, sort_order, created_at)
-            VALUES (${gameId}, ${q.question}, ${JSON.stringify(q.options)}, ${q.correctIndex}, ${i}, ${now})
-          `;
-        }
+  const now = Date.now();
+  for (const g of DEFAULT_GAMES) {
+    const inserted = await sql`
+      INSERT INTO games (key, title, description, icon, reward_type, reward_label, enabled, sort_order, created_at)
+      VALUES (${g.key}, ${g.title}, ${g.description}, ${g.icon}, ${g.rewardType}, ${g.rewardLabel}, ${g.enabled}, ${g.sortOrder}, ${now})
+      ON CONFLICT (key) DO NOTHING
+      RETURNING id
+    `;
+    // only the request that actually inserted the row (not one that lost the race) seeds its questions
+    if (g.key === "trivia" && inserted[0]) {
+      const gameId = inserted[0].id;
+      for (let i = 0; i < DEFAULT_TRIVIA_QUESTIONS.length; i++) {
+        const q = DEFAULT_TRIVIA_QUESTIONS[i];
+        await sql`
+          INSERT INTO quiz_questions (game_id, question, options, correct_index, sort_order, created_at)
+          VALUES (${gameId}, ${q.question}, ${JSON.stringify(q.options)}, ${q.correctIndex}, ${i}, ${now})
+        `;
       }
     }
   }
@@ -176,14 +177,13 @@ function toChallenge(row: Record<string, unknown>): DailyChallenge {
 
 const CHALLENGE_FIELDS = `id, title, description, reward_type as "rewardType", reward_label as "rewardLabel", enabled`;
 
+// seed_key is UNIQUE, so this is safe against concurrent first-requests racing each other
 async function seedChallengeIfEmpty() {
-  const rows = await sql`SELECT COUNT(*)::int as count FROM daily_challenges`;
-  if (rows[0].count === 0) {
-    await sql`
-      INSERT INTO daily_challenges (title, description, reward_type, reward_label, enabled, created_at)
-      VALUES ('Send a message to Jessica', 'Say hello in chat today to complete the challenge', 'points', '100 points', true, ${Date.now()})
-    `;
-  }
+  await sql`
+    INSERT INTO daily_challenges (title, description, reward_type, reward_label, enabled, created_at, seed_key)
+    VALUES ('Send a message to Jessica', 'Say hello in chat today to complete the challenge', 'points', '100 points', true, ${Date.now()}, 'default')
+    ON CONFLICT (seed_key) DO NOTHING
+  `;
 }
 
 export async function listDailyChallenges(): Promise<DailyChallenge[]> {

@@ -319,3 +319,36 @@ export async function deleteCannedReply(id: number): Promise<void> {
   await ensureSchema();
   await sql`DELETE FROM canned_replies WHERE id = ${id}`;
 }
+
+export type QuickQuestionUsage = { label: string; count: number };
+
+// most-used quick question, derived from messages.quick_question_id (set when a
+// customer taps a quick-action button — free-typed messages leave it null)
+export async function getMostCommonQuickQuestions(limit = 5): Promise<QuickQuestionUsage[]> {
+  await ensureSchema();
+  const rows = await sql`
+    SELECT q.label as "label", COUNT(*)::int as "count"
+    FROM messages m
+    JOIN quick_questions q ON q.id = m.quick_question_id
+    GROUP BY q.label
+    ORDER BY "count" DESC
+    LIMIT ${limit}
+  `;
+  return rows.map((r) => ({ label: r.label as string, count: Number(r.count) }));
+}
+
+export type HourlyActivity = { hour: number; count: number };
+
+// message volume by hour-of-day (0-23, server/UTC time), last 30 days
+export async function getMostActiveHours(): Promise<HourlyActivity[]> {
+  await ensureSchema();
+  const since = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  const rows = await sql`
+    SELECT EXTRACT(HOUR FROM to_timestamp(created_at / 1000.0))::int as hour, COUNT(*)::int as count
+    FROM messages
+    WHERE created_at > ${since}
+    GROUP BY hour
+    ORDER BY hour ASC
+  `;
+  return rows.map((r) => ({ hour: Number(r.hour), count: Number(r.count) }));
+}

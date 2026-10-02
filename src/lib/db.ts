@@ -47,6 +47,7 @@ export function ensureSchema(): Promise<void> {
         )
       `;
       await sql`ALTER TABLE messages ADD COLUMN IF NOT EXISTS delivered_at BIGINT`;
+      await sql`ALTER TABLE messages ADD COLUMN IF NOT EXISTS quick_question_id BIGINT`;
       await sql`ALTER TABLE messages ADD COLUMN IF NOT EXISTS read_at BIGINT`;
 
       await sql`CREATE INDEX IF NOT EXISTS idx_messages_visitor ON messages (visitor_id, id)`;
@@ -177,6 +178,15 @@ export function ensureSchema(): Promise<void> {
         )
       `;
       await sql`CREATE INDEX IF NOT EXISTS idx_conversation_notes_visitor ON conversation_notes (visitor_id, id)`;
+
+      await sql`
+        CREATE TABLE IF NOT EXISTS blocked_customers (
+          visitor_id TEXT PRIMARY KEY,
+          reason TEXT,
+          blocked_at BIGINT NOT NULL,
+          blocked_by TEXT
+        )
+      `;
     })();
   }
   return schemaReady;

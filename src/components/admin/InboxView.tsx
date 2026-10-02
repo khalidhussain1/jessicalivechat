@@ -462,7 +462,7 @@ export function InboxView({
         </div>
       </div>
 
-      <div className={`flex-1 flex-col md:flex ${selectedVisitorId ? "flex" : "hidden md:flex"}`}>
+      <div className={`min-w-0 flex-1 flex-col md:flex ${selectedVisitorId ? "flex" : "hidden md:flex"}`}>
         {!selectedVisitorId ? (
           <div className="hidden flex-1 flex-col items-center justify-center gap-3 bg-panel-raised/40 text-text-faint md:flex">
             <span className="text-4xl">💬</span>
@@ -480,12 +480,12 @@ export function InboxView({
                 >
                   ←
                 </button>
-                <div className="min-w-0">
+                <div className="min-w-0 overflow-hidden">
                   <p className="truncate text-sm font-medium text-foreground">
                     {selectedConversation?.visitorName ?? selectedVisitorId.slice(0, 8)}
                   </p>
                   {peerTyping ? (
-                    <p className="text-xs text-text-faint">Typing…</p>
+                    <p className="truncate text-xs whitespace-nowrap text-text-faint">Typing…</p>
                   ) : (
                     <StatusDot online={!!selectedConversation?.visitorOnline} />
                   )}
@@ -556,8 +556,8 @@ export function InboxView({
               </div>
             )}
 
-            <div className="flex min-h-0 flex-1 overflow-hidden">
-            <div className="flex min-h-0 flex-1 flex-col">
+            <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-4 md:px-6">
               {messages.map((message) =>
                 message.imageUrl ? (

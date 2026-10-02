@@ -1,23 +1,37 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAgentRole } from "@/lib/rbac";
-import { getSetting, setSetting, resetSetting, DEFAULT_APPEARANCE, DEFAULT_SUPPORT_AVAILABILITY } from "@/lib/settings-db";
+import type { AgentRole } from "@/lib/agents-db";
+import {
+  getSetting,
+  setSetting,
+  resetSetting,
+  DEFAULT_APPEARANCE,
+  DEFAULT_SUPPORT_AVAILABILITY,
+  DEFAULT_MAINTENANCE,
+} from "@/lib/settings-db";
 
 export const runtime = "nodejs";
 
-const ALLOWED_KEYS = new Set(["appearance", "support_availability"]);
+const KEY_MIN_ROLE: Record<string, AgentRole> = {
+  appearance: "admin",
+  support_availability: "admin",
+  maintenance: "super_admin",
+};
 
 function defaultFor(key: string) {
   if (key === "appearance") return DEFAULT_APPEARANCE;
   if (key === "support_availability") return DEFAULT_SUPPORT_AVAILABILITY;
+  if (key === "maintenance") return DEFAULT_MAINTENANCE;
   return null;
 }
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ key: string }> }) {
   const { key } = await params;
-  if (!ALLOWED_KEYS.has(key)) {
+  const minRole = KEY_MIN_ROLE[key];
+  if (!minRole) {
     return NextResponse.json({ error: "Unknown settings key" }, { status: 404 });
   }
-  const check = await requireAgentRole(request, "admin");
+  const check = await requireAgentRole(request, minRole);
   if ("response" in check) return check.response;
 
   const value = await getSetting(key, defaultFor(key));
@@ -26,10 +40,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ key: string }> }) {
   const { key } = await params;
-  if (!ALLOWED_KEYS.has(key)) {
+  const minRole = KEY_MIN_ROLE[key];
+  if (!minRole) {
     return NextResponse.json({ error: "Unknown settings key" }, { status: 404 });
   }
-  const check = await requireAgentRole(request, "admin");
+  const check = await requireAgentRole(request, minRole);
   if ("response" in check) return check.response;
 
   const body = await request.json().catch(() => null);
@@ -51,10 +66,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ key: string }> }) {
   const { key } = await params;
-  if (!ALLOWED_KEYS.has(key)) {
+  const minRole = KEY_MIN_ROLE[key];
+  if (!minRole) {
     return NextResponse.json({ error: "Unknown settings key" }, { status: 404 });
   }
-  const check = await requireAgentRole(request, "admin");
+  const check = await requireAgentRole(request, minRole);
   if ("response" in check) return check.response;
 
   await resetSetting(key, check.session);

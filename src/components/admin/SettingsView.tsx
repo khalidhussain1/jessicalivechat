@@ -41,7 +41,15 @@ const DEFAULT_SUPPORT_AVAILABILITY: SupportAvailabilitySettings = {
   offlineMessage: "Support is currently offline. You can still leave a message and we'll get back to you.",
 };
 
-type Tab = "appearance" | "availability";
+type Tab = "appearance" | "availability" | "maintenance" | "export";
+
+type MaintenanceSettings = { enabled: boolean; message: string };
+const DEFAULT_MAINTENANCE: MaintenanceSettings = {
+  enabled: false,
+  message: "We're currently performing a quick update. Please check back shortly.",
+};
+
+const EXPORT_ENTITIES = ["conversations", "messages", "customers", "announcements", "faqs"] as const;
 
 function ColorField({
   label,
@@ -413,32 +421,134 @@ function AvailabilityTab() {
   );
 }
 
-export function SettingsView() {
+function MaintenanceTab() {
+  const [draft, setDraft] = useState<MaintenanceSettings>(DEFAULT_MAINTENANCE);
+  const [saved, setSaved] = useState<MaintenanceSettings>(DEFAULT_MAINTENANCE);
+  const [loaded, setLoaded] = useState(false);
+  const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+
+  useEffect(() => {
+    fetch("/api/admin/settings/maintenance")
+      .then((res) => res.json())
+      .then((data: { value: MaintenanceSettings }) => {
+        setDraft(data.value);
+        setSaved(data.value);
+      })
+      .catch(() => {})
+      .finally(() => setLoaded(true));
+  }, []);
+
+  async function save() {
+    setStatus("saving");
+    try {
+      const res = await fetch("/api/admin/settings/maintenance", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(draft),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSaved(data.value);
+        setDraft(data.value);
+        setStatus("saved");
+      } else {
+        setStatus("error");
+      }
+    } catch {
+      setStatus("error");
+    }
+  }
+
+  const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
+
+  if (!loaded) {
+    return <div className="px-4 py-10 text-center text-sm text-text-dim">Loading maintenance settings…</div>;
+  }
+
+  return (
+    <div className="max-w-md space-y-4 rounded-2xl border border-border bg-panel p-4">
+      <label className="flex items-center gap-2 text-sm text-foreground">
+        <input type="checkbox" checked={draft.enabled} onChange={(e) => setDraft((d) => ({ ...d, enabled: e.target.checked }))} />
+        Enable maintenance mode
+      </label>
+      <p className="text-xs text-text-faint">
+        When enabled, customers see the message below instead of the chat. The admin panel stays reachable.
+      </p>
+      <label className="block text-sm">
+        <span className="text-text-dim">Message shown to customers</span>
+        <textarea
+          value={draft.message}
+          onChange={(e) => setDraft((d) => ({ ...d, message: e.target.value }))}
+          rows={3}
+          className="mt-1 w-full resize-none rounded-2xl border border-border bg-background px-3.5 py-2 text-sm"
+          maxLength={300}
+        />
+      </label>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={save}
+          disabled={!dirty || status === "saving"}
+          className="rounded-full bg-accent px-5 py-2 text-sm text-white transition hover:bg-accent-bright disabled:opacity-40"
+        >
+          {status === "saving" ? "Saving…" : "Save changes"}
+        </button>
+        {status === "saved" && !dirty && <span className="text-xs text-accent-bright">Saved ✓</span>}
+      </div>
+    </div>
+  );
+}
+
+function ExportTab() {
+  return (
+    <div className="max-w-md space-y-2 rounded-2xl border border-border bg-panel p-4">
+      <p className="mb-2 text-xs text-text-dim">Export data as CSV or JSON.</p>
+      {EXPORT_ENTITIES.map((entity) => (
+        <div key={entity} className="flex items-center justify-between gap-2 rounded-xl border border-border px-3.5 py-2">
+          <span className="text-sm capitalize text-foreground">{entity}</span>
+          <div className="flex gap-1.5">
+            <a href={`/api/admin/export/${entity}?format=csv`} className="rounded-full border border-border px-3 py-1 text-xs text-text-dim hover:border-accent/40 hover:text-accent-bright">
+              CSV
+            </a>
+            <a href={`/api/admin/export/${entity}?format=json`} className="rounded-full border border-border px-3 py-1 text-xs text-text-dim hover:border-accent/40 hover:text-accent-bright">
+              JSON
+            </a>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function SettingsView({ canManageMaintenance }: { canManageMaintenance: boolean }) {
   const [tab, setTab] = useState<Tab>("appearance");
+
+  const TABS: { key: Tab; label: string }[] = [
+    { key: "appearance", label: "Appearance" },
+    { key: "availability", label: "Support Availability" },
+    ...(canManageMaintenance ? ([{ key: "maintenance", label: "Maintenance Mode" }, { key: "export", label: "Export" }] as const) : []),
+  ];
 
   return (
     <div className="flex-1 overflow-y-auto p-4 md:p-6">
-      <div className="mb-4 flex gap-1.5">
-        <button
-          type="button"
-          onClick={() => setTab("appearance")}
-          className={`rounded-full px-4 py-1.5 text-xs transition ${
-            tab === "appearance" ? "bg-accent text-white" : "bg-panel-raised text-text-dim"
-          }`}
-        >
-          Appearance
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("availability")}
-          className={`rounded-full px-4 py-1.5 text-xs transition ${
-            tab === "availability" ? "bg-accent text-white" : "bg-panel-raised text-text-dim"
-          }`}
-        >
-          Support Availability
-        </button>
+      <div className="mb-4 flex flex-wrap gap-1.5">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => setTab(t.key)}
+            className={`rounded-full px-4 py-1.5 text-xs transition ${
+              tab === t.key ? "bg-accent text-white" : "bg-panel-raised text-text-dim"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
-      {tab === "appearance" ? <AppearanceTab /> : <AvailabilityTab />}
+      {tab === "appearance" && <AppearanceTab />}
+      {tab === "availability" && <AvailabilityTab />}
+      {tab === "maintenance" && canManageMaintenance && <MaintenanceTab />}
+      {tab === "export" && canManageMaintenance && <ExportTab />}
     </div>
   );
 }

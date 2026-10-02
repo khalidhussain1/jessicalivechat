@@ -11,6 +11,8 @@ import { AnnouncementsView } from "@/components/admin/AnnouncementsView";
 import { QuickQuestionsView } from "@/components/admin/QuickQuestionsView";
 import { FaqsView } from "@/components/admin/FaqsView";
 import { CannedRepliesView } from "@/components/admin/CannedRepliesView";
+import { CustomersView } from "@/components/admin/CustomersView";
+import { AnalyticsView } from "@/components/admin/AnalyticsView";
 import { hasRole, roleLabel, type AgentInfo, type Conversation, type ConversationStatus } from "@/components/admin/types";
 
 const POLL_INTERVAL_MS = 2000;
@@ -19,12 +21,14 @@ const CONTINUOUS_RING_INTERVAL_MS = 2500;
 type View =
   | "dashboard"
   | "inbox"
+  | "customers"
   | "announcements"
   | "quick_questions"
   | "faqs"
   | "canned_replies"
   | "agents"
   | "settings"
+  | "analytics"
   | "audit";
 
 type NavItem = { key: View; label: string; minRole?: "admin" | "super_admin" };
@@ -32,12 +36,14 @@ type NavItem = { key: View; label: string; minRole?: "admin" | "super_admin" };
 const NAV_ITEMS: NavItem[] = [
   { key: "dashboard", label: "Dashboard" },
   { key: "inbox", label: "Inbox" },
+  { key: "customers", label: "Customers", minRole: "admin" },
   { key: "announcements", label: "Announcements", minRole: "admin" },
   { key: "quick_questions", label: "Quick Questions", minRole: "admin" },
   { key: "faqs", label: "FAQs", minRole: "admin" },
   { key: "canned_replies", label: "Canned Replies", minRole: "admin" },
   { key: "agents", label: "Agents", minRole: "admin" },
   { key: "settings", label: "Settings", minRole: "admin" },
+  { key: "analytics", label: "Analytics", minRole: "admin" },
   { key: "audit", label: "Audit Log", minRole: "admin" },
 ];
 
@@ -280,12 +286,14 @@ export function AdminShell({ agent, onLogout }: { agent: AgentInfo; onLogout: ()
             onUnauthorized={onLogout}
           />
         )}
+        {view === "customers" && hasRole(agent, "admin") && <CustomersView conversations={conversations} />}
         {view === "announcements" && hasRole(agent, "admin") && <AnnouncementsView />}
         {view === "quick_questions" && hasRole(agent, "admin") && <QuickQuestionsView />}
         {view === "faqs" && hasRole(agent, "admin") && <FaqsView />}
         {view === "canned_replies" && hasRole(agent, "admin") && <CannedRepliesView />}
         {view === "agents" && hasRole(agent, "admin") && <AgentsView currentAgent={agent} />}
-        {view === "settings" && hasRole(agent, "admin") && <SettingsView />}
+        {view === "settings" && hasRole(agent, "admin") && <SettingsView canManageMaintenance={hasRole(agent, "super_admin")} />}
+        {view === "analytics" && hasRole(agent, "admin") && <AnalyticsView />}
         {view === "audit" && hasRole(agent, "admin") && <AuditLogView />}
       </div>
     </div>

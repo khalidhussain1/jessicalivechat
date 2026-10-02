@@ -38,13 +38,24 @@ export const DEFAULT_SUPPORT_AVAILABILITY: SupportAvailabilitySettings = {
   offlineMessage: "Support is currently offline. You can still leave a message and we'll get back to you.",
 };
 
+export type MaintenanceSettings = {
+  enabled: boolean;
+  message: string;
+};
+
+export const DEFAULT_MAINTENANCE: MaintenanceSettings = {
+  enabled: false,
+  message: "We're currently performing a quick update. Please check back shortly.",
+};
+
 // only these keys are ever exposed to the unauthenticated customer frontend —
 // never widen this without checking what each settings key may contain
-export const PUBLIC_SETTINGS_KEYS = ["appearance", "support_availability"] as const;
+export const PUBLIC_SETTINGS_KEYS = ["appearance", "support_availability", "maintenance"] as const;
 
 const DEFAULTS: Record<string, unknown> = {
   appearance: DEFAULT_APPEARANCE,
   support_availability: DEFAULT_SUPPORT_AVAILABILITY,
+  maintenance: DEFAULT_MAINTENANCE,
 };
 
 export async function getSetting<T>(key: string, fallback: T): Promise<T> {

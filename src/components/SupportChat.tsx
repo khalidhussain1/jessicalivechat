@@ -52,6 +52,12 @@ const DEFAULT_SUPPORT_AVAILABILITY: SupportAvailability = {
   offlineMessage: "Support is currently offline. You can still leave a message and we'll get back to you.",
 };
 
+type MaintenanceMode = { enabled: boolean; message: string };
+const DEFAULT_MAINTENANCE: MaintenanceMode = {
+  enabled: false,
+  message: "We're currently performing a quick update. Please check back shortly.",
+};
+
 type Message = {
   id: number;
   visitorId: string;
@@ -284,6 +290,7 @@ export function SupportChat() {
   const [googleEnabled, setGoogleEnabled] = useState(false);
   const [appearance, setAppearance] = useState<Appearance>(DEFAULT_APPEARANCE);
   const [availability, setAvailability] = useState<SupportAvailability>(DEFAULT_SUPPORT_AVAILABILITY);
+  const [maintenance, setMaintenance] = useState<MaintenanceMode>(DEFAULT_MAINTENANCE);
   const [quickQuestions, setQuickQuestions] = useState<QuickQuestion[]>(DEFAULT_QUICK_QUESTIONS);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [dismissedAnnouncementIds, setDismissedAnnouncementIds] = useState<number[]>([]);
@@ -305,6 +312,7 @@ export function SupportChat() {
   const [copiedId, setCopiedId] = useState<number | string | null>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [newMessageCount, setNewMessageCount] = useState(0);
+  const [unviewedCount, setUnviewedCount] = useState(0);
   const [notifPermission, setNotifPermission] = useState<NotificationPermission | "unsupported">(
     "default",
   );
@@ -329,9 +337,14 @@ export function SupportChat() {
       .catch(() => {});
     fetch("/api/settings/public")
       .then((res) => res.json())
-      .then((data: { appearance?: Partial<Appearance>; support_availability?: Partial<SupportAvailability> }) => {
+      .then((data: {
+        appearance?: Partial<Appearance>;
+        support_availability?: Partial<SupportAvailability>;
+        maintenance?: Partial<MaintenanceMode>;
+      }) => {
         if (data.appearance) setAppearance((prev) => ({ ...prev, ...data.appearance }));
         if (data.support_availability) setAvailability((prev) => ({ ...prev, ...data.support_availability }));
+        if (data.maintenance) setMaintenance((prev) => ({ ...prev, ...data.maintenance }));
       })
       .catch(() => {});
     fetch("/api/content/public")
@@ -434,6 +447,10 @@ export function SupportChat() {
               setNewMessageCount((n) => n + newAgentMessages.length);
             }
 
+            if (!visible) {
+              setUnviewedCount((n) => n + newAgentMessages.length);
+            }
+
             const latest = newAgentMessages[newAgentMessages.length - 1];
             if (!visible && latest.id !== lastNotifiedIdRef.current) {
               lastNotifiedIdRef.current = latest.id;
@@ -458,6 +475,67 @@ export function SupportChat() {
       clearInterval(interval);
     };
   }, [ready, session?.user?.id, play, appearance.supportName]);
+
+  // "customer opens the conversation -> unread messages are marked as read -> badge clears"
+  useEffect(() => {
+    function handleVisibility() {
+      if (document.visibilityState === "visible") {
+        setUnviewedCount(0);
+      }
+    }
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, []);
+
+  // App Badge API (Android/desktop PWA installs) with graceful fallbacks: a page-title
+  // prefix and a redrawn favicon dot — neither requires any paid push/badge service.
+  // iOS Safari has no App Badge API at all, even when installed; the title/favicon
+  // fallbacks still work there since they're plain DOM/tab-level updates.
+  useEffect(() => {
+    const nav = navigator as Navigator & {
+      setAppBadge?: (count?: number) => Promise<void>;
+      clearAppBadge?: () => Promise<void>;
+    };
+    try {
+      if (unviewedCount > 0) nav.setAppBadge?.(unviewedCount);
+      else nav.clearAppBadge?.();
+    } catch {
+      // App Badge API can throw even when present (e.g. not installed as a PWA) — fall through to the other indicators below
+    }
+
+    const baseTitle = `${appearance.supportName} Chat`;
+    document.title = unviewedCount > 0 ? `(${unviewedCount}) ${baseTitle}` : baseTitle;
+
+    let link = document.querySelector<HTMLLinkElement>("link[rel='icon'][data-dynamic]");
+    if (!link) {
+      link = document.createElement("link");
+      link.rel = "icon";
+      link.dataset.dynamic = "true";
+      document.head.appendChild(link);
+    }
+    if (unviewedCount === 0) {
+      link.href = "/icons/icon-192.png";
+      return;
+    }
+    const img = new Image();
+    img.src = "/icons/icon-192.png";
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 48;
+      canvas.height = 48;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.drawImage(img, 0, 0, 48, 48);
+      ctx.beginPath();
+      ctx.arc(38, 10, 10, 0, Math.PI * 2);
+      ctx.fillStyle = "#dc2626";
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "#ffffff";
+      ctx.stroke();
+      if (link) link.href = canvas.toDataURL("image/png");
+    };
+  }, [unviewedCount, appearance.supportName]);
 
   useEffect(() => {
     function update() {
@@ -491,7 +569,7 @@ export function SupportChat() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }
 
-  async function sendMessage(text: string) {
+  async function sendMessage(text: string, quickQuestionId?: number) {
     const trimmed = text.trim();
     if (!trimmed || !visitorId) return;
 
@@ -516,16 +594,16 @@ export function SupportChat() {
     };
     setMessages((prev) => [...prev, optimistic]);
 
-    await sendToServer(tempId, outgoing);
+    await sendToServer(tempId, outgoing, quickQuestionId);
   }
 
-  async function sendToServer(tempId: number, text: string) {
+  async function sendToServer(tempId: number, text: string, quickQuestionId?: number) {
     if (!visitorId) return;
     try {
       const res = await fetch("/api/chat/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ visitorId, text, senderName: displayName }),
+        body: JSON.stringify({ visitorId, text, senderName: displayName, quickQuestionId }),
       });
       const data: { message: Message } = await res.json();
       if (!res.ok || !data?.message) throw new Error("send failed");
@@ -651,6 +729,15 @@ export function SupportChat() {
   }
 
   const ringOnCooldown = ringRemainingMs > 0;
+
+  if (maintenance.enabled) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 bg-panel px-8 text-center md:h-[70vh] md:max-h-[720px] md:flex-none md:rounded-2xl md:border md:border-border">
+        <span className="text-4xl" aria-hidden="true">🛠️</span>
+        <p className="max-w-xs text-sm text-text-dim">{maintenance.message}</p>
+      </div>
+    );
+  }
 
   if (guestMode === null || !hasResolvedAuth) {
     return (
@@ -835,7 +922,7 @@ export function SupportChat() {
           <button
             key={q.id}
             type="button"
-            onClick={() => sendMessage(q.message)}
+            onClick={() => sendMessage(q.message, q.id > 0 ? q.id : undefined)}
             className="shrink-0 rounded-full border border-accent/40 px-4 py-2 text-sm whitespace-nowrap text-accent-bright transition hover:border-accent hover:bg-accent/10 focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none active:scale-[0.97]"
           >
             {q.icon} {q.label}

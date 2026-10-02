@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { addMessage } from "@/lib/chat-db";
 import { saveImageUpload, UploadError } from "@/lib/uploads";
+import { isCustomerBlocked, isRateLimited } from "@/lib/moderation-db";
 
 export const runtime = "nodejs";
 
@@ -12,6 +13,12 @@ export async function POST(request: NextRequest) {
 
   if (typeof visitorId !== "string" || !visitorId || !(file instanceof File)) {
     return NextResponse.json({ error: "visitorId and file are required" }, { status: 400 });
+  }
+  if (await isCustomerBlocked(visitorId)) {
+    return NextResponse.json({ error: "This conversation is no longer accepting new messages" }, { status: 403 });
+  }
+  if (await isRateLimited(visitorId)) {
+    return NextResponse.json({ error: "You're sending messages too quickly. Please slow down." }, { status: 429 });
   }
 
   try {

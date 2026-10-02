@@ -74,11 +74,16 @@ export function CustomerPanel({
   const assignedAgent = roster.find((a) => a.id === conversation.assignedAgentId);
 
   return (
-    <div className="flex h-full w-full flex-col overflow-y-auto border-l border-border bg-panel p-4 md:w-80">
+    <div className="absolute inset-0 z-20 flex h-full w-full flex-col overflow-y-auto border-l border-border bg-panel p-4 md:static md:z-auto md:w-80">
       <div className="mb-4 flex items-center justify-between">
         <p className="text-sm font-medium text-foreground">Customer details</p>
         {onClose && (
-          <button type="button" onClick={onClose} aria-label="Close panel" className="text-text-faint hover:text-accent-bright md:hidden">
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close panel"
+            className="rounded-full p-1 text-text-faint hover:text-accent-bright md:hidden"
+          >
             ✕
           </button>
         )}

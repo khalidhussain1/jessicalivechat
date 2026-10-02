@@ -44,17 +44,18 @@ export async function addMessage(
   visitorId: string,
   sender: "user" | "agent",
   text: string,
-  options?: { senderName?: string; imageUrl?: string },
+  options?: { senderName?: string; imageUrl?: string; quickQuestionId?: number },
 ): Promise<ChatMessage> {
   await ensureSchema();
   await ensureConversation(visitorId);
   const now = Date.now();
   const senderName = options?.senderName ?? null;
   const imageUrl = options?.imageUrl ?? null;
+  const quickQuestionId = options?.quickQuestionId ?? null;
 
   const rows = await sql`
-    INSERT INTO messages (visitor_id, sender, sender_name, text, image_url, created_at)
-    VALUES (${visitorId}, ${sender}, ${senderName}, ${text}, ${imageUrl}, ${now})
+    INSERT INTO messages (visitor_id, sender, sender_name, text, image_url, created_at, quick_question_id)
+    VALUES (${visitorId}, ${sender}, ${senderName}, ${text}, ${imageUrl}, ${now}, ${quickQuestionId})
     RETURNING id
   `;
 

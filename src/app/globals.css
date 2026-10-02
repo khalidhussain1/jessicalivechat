@@ -45,8 +45,22 @@
 }
 
 body {
+  position: relative;
   background: var(--background);
   color: var(--foreground);
+}
+
+/* subtle gaming-hub backdrop — soft accent glows behind the admin-configurable
+   background color, not a replacement for it */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(600px circle at 15% -10%, color-mix(in srgb, var(--color-accent) 12%, transparent), transparent 60%),
+    radial-gradient(500px circle at 110% 10%, color-mix(in srgb, var(--color-accent) 10%, transparent), transparent 60%);
 }
 
 /* smooth light/dark handoff without animating every property on every element */

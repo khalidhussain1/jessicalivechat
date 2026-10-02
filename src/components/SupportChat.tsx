@@ -73,25 +73,7 @@ type Message = {
 };
 
 type QuickQuestion = { id: number; icon: string; label: string; message: string };
-type AnnouncementType = "info" | "success" | "warning" | "important";
-type Announcement = {
-  id: number;
-  text: string;
-  type: AnnouncementType;
-  dismissible: boolean;
-  linkLabel: string | null;
-  linkUrl: string | null;
-};
 type Faq = { id: number; question: string; answer: string };
-
-const DISMISSED_ANNOUNCEMENTS_KEY = "jessica-dismissed-announcements";
-
-const ANNOUNCEMENT_STYLES: Record<AnnouncementType, { icon: string; className: string }> = {
-  info: { icon: "🔔", className: "border-border bg-panel-raised text-text-dim" },
-  success: { icon: "✅", className: "border-accent/30 bg-accent/10 text-accent-bright" },
-  warning: { icon: "⚠️", className: "border-amber-500/30 bg-amber-500/10 text-amber-700" },
-  important: { icon: "📢", className: "border-red-500/30 bg-red-500/10 text-red-600" },
-};
 
 const VISITOR_KEY = "jessica-visitor-id";
 const GUEST_KEY = "jessica-guest-mode";
@@ -197,7 +179,7 @@ function AuthGate({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-5 bg-panel px-8 text-center md:h-[70vh] md:max-h-[720px] md:flex-none md:rounded-2xl md:border md:border-border">
+    <div className="flex h-[72vh] max-h-[640px] min-h-[420px] w-full flex-col items-center justify-center gap-5 bg-panel px-8 text-center rounded-2xl border border-border md:h-[70vh] md:max-h-[720px]">
       <div className="flex flex-col items-center gap-2">
         <JessicaAvatar size={56} imageUrl={appearance.avatarUrl ?? appearance.logoUrl} />
         <div>
@@ -292,8 +274,6 @@ export function SupportChat() {
   const [availability, setAvailability] = useState<SupportAvailability>(DEFAULT_SUPPORT_AVAILABILITY);
   const [maintenance, setMaintenance] = useState<MaintenanceMode>(DEFAULT_MAINTENANCE);
   const [quickQuestions, setQuickQuestions] = useState<QuickQuestion[]>(DEFAULT_QUICK_QUESTIONS);
-  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
-  const [dismissedAnnouncementIds, setDismissedAnnouncementIds] = useState<number[]>([]);
   const [faqs, setFaqs] = useState<Faq[]>([]);
   const [showFaqs, setShowFaqs] = useState(false);
 
@@ -349,27 +329,12 @@ export function SupportChat() {
       .catch(() => {});
     fetch("/api/content/public")
       .then((res) => res.json())
-      .then((data: { quickQuestions?: QuickQuestion[]; announcements?: Announcement[]; faqs?: Faq[] }) => {
+      .then((data: { quickQuestions?: QuickQuestion[]; faqs?: Faq[] }) => {
         if (data.quickQuestions?.length) setQuickQuestions(data.quickQuestions);
-        if (data.announcements) setAnnouncements(data.announcements);
         if (data.faqs) setFaqs(data.faqs);
       })
       .catch(() => {});
-    try {
-      const raw = window.localStorage.getItem(DISMISSED_ANNOUNCEMENTS_KEY);
-      if (raw) setDismissedAnnouncementIds(JSON.parse(raw));
-    } catch {
-      // ignore malformed/absent localStorage value
-    }
   }, []);
-
-  function dismissAnnouncement(id: number) {
-    setDismissedAnnouncementIds((prev) => {
-      const next = [...prev, id];
-      window.localStorage.setItem(DISMISSED_ANNOUNCEMENTS_KEY, JSON.stringify(next));
-      return next;
-    });
-  }
 
   const displayName = session?.user?.name ?? "Guest";
   const showGate = status === "unauthenticated" && guestMode === false;
@@ -732,7 +697,7 @@ export function SupportChat() {
 
   if (maintenance.enabled) {
     return (
-      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 bg-panel px-8 text-center md:h-[70vh] md:max-h-[720px] md:flex-none md:rounded-2xl md:border md:border-border">
+      <div className="flex h-[72vh] max-h-[640px] min-h-[420px] w-full flex-col items-center justify-center gap-3 bg-panel px-8 text-center rounded-2xl border border-border md:h-[70vh] md:max-h-[720px]">
         <span className="text-4xl" aria-hidden="true">🛠️</span>
         <p className="max-w-xs text-sm text-text-dim">{maintenance.message}</p>
       </div>
@@ -741,7 +706,7 @@ export function SupportChat() {
 
   if (guestMode === null || !hasResolvedAuth) {
     return (
-      <div className="flex min-h-0 flex-1 items-center justify-center bg-panel text-sm text-text-dim md:h-[70vh] md:max-h-[720px] md:flex-none md:rounded-2xl md:border md:border-border">
+      <div className="flex h-[72vh] max-h-[640px] min-h-[420px] w-full items-center justify-center bg-panel text-sm text-text-dim rounded-2xl border border-border md:h-[70vh] md:max-h-[720px]">
         Loading…
       </div>
     );
@@ -770,7 +735,7 @@ export function SupportChat() {
     <div
       onClick={unlock}
       style={themeVars}
-      className="theme-transition flex min-h-0 flex-1 flex-col overflow-hidden bg-panel md:h-[70vh] md:max-h-[720px] md:flex-none md:rounded-2xl md:border md:border-border"
+      className="theme-transition flex h-[72vh] max-h-[640px] min-h-[420px] w-full flex-col overflow-hidden rounded-2xl border border-border bg-panel shadow-lg shadow-black/5 md:h-[70vh] md:max-h-[720px]"
     >
       {availability.status !== "online" && (
         <div
@@ -873,39 +838,6 @@ export function SupportChat() {
           onSaved={(newName) => updateSession({ name: newName })}
         />
       )}
-
-      {announcements
-        .filter((a) => !dismissedAnnouncementIds.includes(a.id))
-        .map((a) => {
-          const style = ANNOUNCEMENT_STYLES[a.type];
-          return (
-            <div
-              key={a.id}
-              role="status"
-              className={`flex shrink-0 items-center justify-between gap-3 border-b px-4 py-2 text-xs font-medium ${style.className}`}
-            >
-              <span className="flex min-w-0 items-center gap-2">
-                <span aria-hidden="true">{style.icon}</span>
-                <span className="truncate">{a.text}</span>
-                {a.linkUrl && a.linkLabel && (
-                  <a href={a.linkUrl} target="_blank" rel="noreferrer" className="shrink-0 underline underline-offset-2">
-                    {a.linkLabel}
-                  </a>
-                )}
-              </span>
-              {a.dismissible && (
-                <button
-                  type="button"
-                  onClick={() => dismissAnnouncement(a.id)}
-                  aria-label="Dismiss announcement"
-                  className="shrink-0 opacity-70 hover:opacity-100"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-          );
-        })}
 
       {notifPermission === "default" && (
         <button

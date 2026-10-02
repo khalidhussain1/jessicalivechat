@@ -41,7 +41,7 @@ const DEFAULT_SUPPORT_AVAILABILITY: SupportAvailabilitySettings = {
   offlineMessage: "Support is currently offline. You can still leave a message and we'll get back to you.",
 };
 
-type Tab = "appearance" | "availability" | "maintenance" | "export";
+type Tab = "appearance" | "hero" | "home_layout" | "availability" | "maintenance" | "export";
 
 type MaintenanceSettings = { enabled: boolean; message: string };
 const DEFAULT_MAINTENANCE: MaintenanceSettings = {
@@ -50,6 +50,47 @@ const DEFAULT_MAINTENANCE: MaintenanceSettings = {
 };
 
 const EXPORT_ENTITIES = ["conversations", "messages", "customers", "announcements", "faqs"] as const;
+
+type HeroSettings = {
+  enabled: boolean;
+  title: string;
+  subtitle: string;
+  ctaText: string;
+  ctaLink: string;
+  imageUrl: string | null;
+  backgroundStyle: "gradient" | "solid";
+};
+
+const DEFAULT_HERO: HeroSettings = {
+  enabled: true,
+  title: "GAME SUPPORT",
+  subtitle: "Your gaming community, entertainment, and support hub",
+  ctaText: "",
+  ctaLink: "",
+  imageUrl: null,
+  backgroundStyle: "gradient",
+};
+
+type HomeZoneKey = "hero" | "announcements" | "chat" | "entertainment" | "rewards";
+type HomeLayoutSettings = { zones: { key: HomeZoneKey; enabled: boolean }[] };
+
+const DEFAULT_HOME_LAYOUT: HomeLayoutSettings = {
+  zones: [
+    { key: "hero", enabled: true },
+    { key: "chat", enabled: true },
+    { key: "announcements", enabled: true },
+    { key: "entertainment", enabled: true },
+    { key: "rewards", enabled: true },
+  ],
+};
+
+const ZONE_LABELS: Record<HomeZoneKey, string> = {
+  hero: "🎮 Hero banner",
+  chat: "💬 Jessica support chat",
+  announcements: "📢 Announcements",
+  entertainment: "🕹️ Entertainment & games",
+  rewards: "🎁 Rewards & tasks",
+};
 
 function ColorField({
   label,
@@ -421,6 +462,318 @@ function AvailabilityTab() {
   );
 }
 
+function HeroTab() {
+  const [draft, setDraft] = useState<HeroSettings>(DEFAULT_HERO);
+  const [saved, setSaved] = useState<HeroSettings>(DEFAULT_HERO);
+  const [loaded, setLoaded] = useState(false);
+  const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [uploading, setUploading] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    fetch("/api/admin/settings/hero")
+      .then((res) => res.json())
+      .then((data: { value: HeroSettings }) => {
+        setDraft(data.value);
+        setSaved(data.value);
+      })
+      .catch(() => {})
+      .finally(() => setLoaded(true));
+  }, []);
+
+  function set<K extends keyof HeroSettings>(key: K, value: HeroSettings[K]) {
+    setDraft((d) => ({ ...d, [key]: value }));
+  }
+
+  async function handleUpload(file: File) {
+    setUploading(true);
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      const res = await fetch("/api/admin/upload", { method: "POST", body: formData });
+      const data = await res.json();
+      if (res.ok) set("imageUrl", data.url);
+    } catch {
+      // ignore; user can retry the upload
+    }
+    setUploading(false);
+  }
+
+  async function save() {
+    setStatus("saving");
+    try {
+      const res = await fetch("/api/admin/settings/hero", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(draft),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSaved(data.value);
+        setDraft(data.value);
+        setStatus("saved");
+      } else {
+        setStatus("error");
+      }
+    } catch {
+      setStatus("error");
+    }
+  }
+
+  async function reset() {
+    const res = await fetch("/api/admin/settings/hero", { method: "DELETE" });
+    if (res.ok) {
+      setDraft(DEFAULT_HERO);
+      setSaved(DEFAULT_HERO);
+      setStatus("saved");
+    }
+  }
+
+  const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
+
+  if (!loaded) {
+    return <div className="px-4 py-10 text-center text-sm text-text-dim">Loading hero settings…</div>;
+  }
+
+  return (
+    <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+      <div className="space-y-4">
+        <div className="space-y-3 rounded-2xl border border-border bg-panel p-4">
+          <label className="flex items-center justify-between text-sm">
+            <span className="text-text-dim">Show hero banner</span>
+            <input type="checkbox" checked={draft.enabled} onChange={(e) => set("enabled", e.target.checked)} />
+          </label>
+          <label className="block text-sm">
+            <span className="text-text-dim">Title</span>
+            <input
+              value={draft.title}
+              onChange={(e) => set("title", e.target.value)}
+              maxLength={60}
+              className="mt-1 w-full rounded-full border border-border bg-background px-3.5 py-2 text-sm"
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="text-text-dim">Subtitle</span>
+            <input
+              value={draft.subtitle}
+              onChange={(e) => set("subtitle", e.target.value)}
+              maxLength={120}
+              className="mt-1 w-full rounded-full border border-border bg-background px-3.5 py-2 text-sm"
+            />
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="block text-sm">
+              <span className="text-text-dim">Button text</span>
+              <input
+                value={draft.ctaText}
+                onChange={(e) => set("ctaText", e.target.value)}
+                placeholder="(optional)"
+                maxLength={30}
+                className="mt-1 w-full rounded-full border border-border bg-background px-3.5 py-2 text-sm"
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="text-text-dim">Button link</span>
+              <input
+                value={draft.ctaLink}
+                onChange={(e) => set("ctaLink", e.target.value)}
+                placeholder="https://…"
+                className="mt-1 w-full rounded-full border border-border bg-background px-3.5 py-2 text-sm"
+              />
+            </label>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-text-dim">Hero image</span>
+            <div className="flex items-center gap-2">
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => e.target.files?.[0] && handleUpload(e.target.files[0])}
+              />
+              <button
+                type="button"
+                onClick={() => imageInputRef.current?.click()}
+                disabled={uploading}
+                className="rounded-full border border-border px-3 py-1.5 text-xs text-text-dim hover:border-accent/40 hover:text-accent-bright"
+              >
+                {uploading ? "Uploading…" : draft.imageUrl ? "Replace" : "Upload"}
+              </button>
+              {draft.imageUrl && (
+                <button type="button" onClick={() => set("imageUrl", null)} className="text-xs text-text-faint hover:text-red-500">
+                  Remove
+                </button>
+              )}
+            </div>
+          </div>
+          <label className="flex items-center justify-between text-sm">
+            <span className="text-text-dim">Background style</span>
+            <select
+              value={draft.backgroundStyle}
+              onChange={(e) => set("backgroundStyle", e.target.value as HeroSettings["backgroundStyle"])}
+              className="rounded-full border border-border bg-background px-3 py-1.5 text-xs"
+            >
+              <option value="gradient">Gradient</option>
+              <option value="solid">Solid</option>
+            </select>
+          </label>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={save}
+            disabled={!dirty || status === "saving"}
+            className="rounded-full bg-accent px-5 py-2 text-sm text-white transition hover:bg-accent-bright disabled:opacity-40"
+          >
+            {status === "saving" ? "Saving…" : "Save changes"}
+          </button>
+          <button
+            type="button"
+            onClick={reset}
+            className="rounded-full border border-border px-4 py-2 text-sm text-text-dim hover:border-accent/40 hover:text-accent-bright"
+          >
+            Reset to default
+          </button>
+          {status === "saved" && !dirty && <span className="text-xs text-accent-bright">Saved ✓</span>}
+        </div>
+      </div>
+
+      <div>
+        <p className="mb-2 text-xs font-medium text-text-dim">Live preview</p>
+        {draft.enabled ? (
+          <div
+            className="overflow-hidden rounded-2xl px-6 py-10 text-center text-white"
+            style={{
+              background:
+                draft.backgroundStyle === "gradient"
+                  ? "linear-gradient(135deg, #16a34a, #0f172a)"
+                  : "#16a34a",
+            }}
+          >
+            {draft.imageUrl && (
+              // eslint-disable-next-line @next/next/no-img-element -- admin-provided preview asset, arbitrary source
+              <img src={draft.imageUrl} alt="" className="mx-auto mb-3 h-16 w-16 rounded-xl object-cover" />
+            )}
+            <p className="text-2xl font-bold tracking-wide">{draft.title}</p>
+            <p className="mx-auto mt-1 max-w-xs text-sm text-white/80">{draft.subtitle}</p>
+            {draft.ctaText && (
+              <span className="mt-4 inline-block rounded-full bg-white px-5 py-2 text-sm font-medium text-black">
+                {draft.ctaText}
+              </span>
+            )}
+          </div>
+        ) : (
+          <p className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-text-faint">
+            Hero banner is hidden
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function HomeLayoutTab() {
+  const [draft, setDraft] = useState<HomeLayoutSettings>(DEFAULT_HOME_LAYOUT);
+  const [saved, setSaved] = useState<HomeLayoutSettings>(DEFAULT_HOME_LAYOUT);
+  const [loaded, setLoaded] = useState(false);
+  const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+
+  useEffect(() => {
+    fetch("/api/admin/settings/home_layout")
+      .then((res) => res.json())
+      .then((data: { value: HomeLayoutSettings }) => {
+        setDraft(data.value);
+        setSaved(data.value);
+      })
+      .catch(() => {})
+      .finally(() => setLoaded(true));
+  }, []);
+
+  function toggleZone(key: HomeZoneKey) {
+    setDraft((d) => ({ zones: d.zones.map((z) => (z.key === key ? { ...z, enabled: !z.enabled } : z)) }));
+  }
+
+  function move(index: number, direction: -1 | 1) {
+    setDraft((d) => {
+      const zones = [...d.zones];
+      const target = index + direction;
+      if (target < 0 || target >= zones.length) return d;
+      [zones[index], zones[target]] = [zones[target], zones[index]];
+      return { zones };
+    });
+  }
+
+  async function save() {
+    setStatus("saving");
+    try {
+      const res = await fetch("/api/admin/settings/home_layout", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(draft),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSaved(data.value);
+        setDraft(data.value);
+        setStatus("saved");
+      } else {
+        setStatus("error");
+      }
+    } catch {
+      setStatus("error");
+    }
+  }
+
+  const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
+
+  if (!loaded) {
+    return <div className="px-4 py-10 text-center text-sm text-text-dim">Loading home layout…</div>;
+  }
+
+  return (
+    <div className="max-w-md space-y-4">
+      <p className="text-xs text-text-dim">
+        Choose which sections appear on the customer homepage, and in what order.
+      </p>
+      <div className="space-y-2">
+        {draft.zones.map((zone, index) => (
+          <div key={zone.key} className="flex items-center gap-3 rounded-2xl border border-border bg-panel p-3">
+            <div className="flex shrink-0 flex-col">
+              <button type="button" disabled={index === 0} onClick={() => move(index, -1)} className="text-text-faint hover:text-accent-bright disabled:opacity-30">▲</button>
+              <button type="button" disabled={index === draft.zones.length - 1} onClick={() => move(index, 1)} className="text-text-faint hover:text-accent-bright disabled:opacity-30">▼</button>
+            </div>
+            <p className="min-w-0 flex-1 truncate text-sm text-foreground">{ZONE_LABELS[zone.key]}</p>
+            {zone.key !== "chat" && (
+              <button
+                type="button"
+                onClick={() => toggleZone(zone.key)}
+                className={`shrink-0 rounded-full border px-3 py-1.5 text-xs transition ${
+                  zone.enabled ? "border-border text-text-dim hover:border-accent/40" : "border-red-500/30 text-red-600"
+                }`}
+              >
+                {zone.enabled ? "Enabled" : "Disabled"}
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={save}
+          disabled={!dirty || status === "saving"}
+          className="rounded-full bg-accent px-5 py-2 text-sm text-white transition hover:bg-accent-bright disabled:opacity-40"
+        >
+          {status === "saving" ? "Saving…" : "Save changes"}
+        </button>
+        {status === "saved" && !dirty && <span className="text-xs text-accent-bright">Saved ✓</span>}
+      </div>
+    </div>
+  );
+}
+
 function MaintenanceTab() {
   const [draft, setDraft] = useState<MaintenanceSettings>(DEFAULT_MAINTENANCE);
   const [saved, setSaved] = useState<MaintenanceSettings>(DEFAULT_MAINTENANCE);
@@ -525,6 +878,8 @@ export function SettingsView({ canManageMaintenance }: { canManageMaintenance: b
 
   const TABS: { key: Tab; label: string }[] = [
     { key: "appearance", label: "Appearance" },
+    { key: "hero", label: "Hero" },
+    { key: "home_layout", label: "Home Layout" },
     { key: "availability", label: "Support Availability" },
     ...(canManageMaintenance ? ([{ key: "maintenance", label: "Maintenance Mode" }, { key: "export", label: "Export" }] as const) : []),
   ];
@@ -546,6 +901,8 @@ export function SettingsView({ canManageMaintenance }: { canManageMaintenance: b
         ))}
       </div>
       {tab === "appearance" && <AppearanceTab />}
+      {tab === "hero" && <HeroTab />}
+      {tab === "home_layout" && <HomeLayoutTab />}
       {tab === "availability" && <AvailabilityTab />}
       {tab === "maintenance" && canManageMaintenance && <MaintenanceTab />}
       {tab === "export" && canManageMaintenance && <ExportTab />}

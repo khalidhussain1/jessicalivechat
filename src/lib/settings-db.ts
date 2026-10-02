@@ -48,14 +48,60 @@ export const DEFAULT_MAINTENANCE: MaintenanceSettings = {
   message: "We're currently performing a quick update. Please check back shortly.",
 };
 
+export type HeroSettings = {
+  enabled: boolean;
+  title: string;
+  subtitle: string;
+  ctaText: string;
+  ctaLink: string;
+  imageUrl: string | null;
+  backgroundStyle: "gradient" | "solid";
+};
+
+export const DEFAULT_HERO: HeroSettings = {
+  enabled: true,
+  title: "GAME SUPPORT",
+  subtitle: "Your gaming community, entertainment, and support hub",
+  ctaText: "",
+  ctaLink: "",
+  imageUrl: null,
+  backgroundStyle: "gradient",
+};
+
+export type HomeZoneKey = "hero" | "announcements" | "chat" | "entertainment" | "rewards";
+
+export type HomeLayoutSettings = {
+  zones: { key: HomeZoneKey; enabled: boolean }[];
+};
+
+// chat is kept as the 2nd zone by default (right after hero) so it stays reachable
+// without much scrolling, per the "chat should remain easily accessible" requirement
+export const DEFAULT_HOME_LAYOUT: HomeLayoutSettings = {
+  zones: [
+    { key: "hero", enabled: true },
+    { key: "chat", enabled: true },
+    { key: "announcements", enabled: true },
+    { key: "entertainment", enabled: true },
+    { key: "rewards", enabled: true },
+  ],
+};
+
 // only these keys are ever exposed to the unauthenticated customer frontend —
 // never widen this without checking what each settings key may contain
-export const PUBLIC_SETTINGS_KEYS = ["appearance", "support_availability", "maintenance"] as const;
+export const PUBLIC_SETTINGS_KEYS = [
+  "appearance",
+  "support_availability",
+  "maintenance",
+  "hero",
+  "home_layout",
+] as const;
 
 const DEFAULTS: Record<string, unknown> = {
   appearance: DEFAULT_APPEARANCE,
   support_availability: DEFAULT_SUPPORT_AVAILABILITY,
   maintenance: DEFAULT_MAINTENANCE,
+  hero: DEFAULT_HERO,
+  home_layout: DEFAULT_HOME_LAYOUT,
 };
 
 export async function getSetting<T>(key: string, fallback: T): Promise<T> {

@@ -8,6 +8,8 @@ import {
   DEFAULT_APPEARANCE,
   DEFAULT_SUPPORT_AVAILABILITY,
   DEFAULT_MAINTENANCE,
+  DEFAULT_HERO,
+  DEFAULT_HOME_LAYOUT,
 } from "@/lib/settings-db";
 
 export const runtime = "nodejs";
@@ -16,12 +18,16 @@ const KEY_MIN_ROLE: Record<string, AgentRole> = {
   appearance: "admin",
   support_availability: "admin",
   maintenance: "super_admin",
+  hero: "admin",
+  home_layout: "admin",
 };
 
 function defaultFor(key: string) {
   if (key === "appearance") return DEFAULT_APPEARANCE;
   if (key === "support_availability") return DEFAULT_SUPPORT_AVAILABILITY;
   if (key === "maintenance") return DEFAULT_MAINTENANCE;
+  if (key === "hero") return DEFAULT_HERO;
+  if (key === "home_layout") return DEFAULT_HOME_LAYOUT;
   return null;
 }
 

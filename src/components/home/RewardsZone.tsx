@@ -7,12 +7,26 @@ import { useVisitorId } from "@/lib/use-visitor-id";
 
 type Reward = { id: number; label: string; source: string; status: "available" | "pending" | "used" | "expired" };
 type Task = { id: number; title: string; description: string; instructions: string; rewardLabel: string; hasOpenSubmission: boolean };
+type Draw = {
+  id: number;
+  title: string;
+  description: string;
+  rewardLabel: string;
+  entryCount: number;
+  maxEntries: number | null;
+  status: "open" | "closed" | "drawn";
+  isWinner: boolean;
+  wasDrawn: boolean;
+  entered: boolean;
+};
 
 export function RewardsZone() {
   const visitorId = useVisitorId();
   const [rewards, setRewards] = useState<Reward[] | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
+  const [draw, setDraw] = useState<Draw | null>(null);
+  const [entering, setEntering] = useState(false);
 
   function loadRewards() {
     if (!visitorId) return;
@@ -30,14 +44,25 @@ export function RewardsZone() {
       .catch(() => {});
   }
 
+  function loadDraw() {
+    const qs = visitorId ? `?visitorId=${visitorId}` : "";
+    fetch(`/api/draws/public${qs}`)
+      .then((res) => res.json())
+      .then((data: { draw: Draw | null }) => setDraw(data.draw))
+      .catch(() => {});
+  }
+
   useEffect(() => {
     loadRewards();
     loadTasks();
-    // games/challenges/task-approvals grant rewards from elsewhere on the page — poll
-    // for freshness the same way the rest of this app keeps cross-component state in sync
+    loadDraw();
+    // games/challenges/task-approvals/draws grant rewards or change state from elsewhere
+    // on the page — poll for freshness the same way the rest of this app keeps
+    // cross-component state in sync
     const interval = setInterval(() => {
       loadRewards();
       loadTasks();
+      loadDraw();
     }, 5000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- re-fetch once visitorId resolves
@@ -51,6 +76,18 @@ export function RewardsZone() {
       body: JSON.stringify({ visitorId, rewardId: id }),
     });
     loadRewards();
+  }
+
+  async function enterDraw() {
+    if (!visitorId || !draw) return;
+    setEntering(true);
+    await fetch(`/api/draws/${draw.id}/enter`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ visitorId }),
+    }).catch(() => {});
+    loadDraw();
+    setEntering(false);
   }
 
   const available = rewards?.filter((r) => r.status === "available") ?? [];
@@ -80,6 +117,32 @@ export function RewardsZone() {
         <p className="mb-3 text-xs text-text-faint">Play a game in Entertainment or complete a task to earn your first reward.</p>
       )}
 
+      {draw && (
+        <div className="mb-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
+          <p className="text-sm font-semibold text-amber-700">🎟️ {draw.title}</p>
+          <p className="text-xs text-amber-700/80">{draw.description}</p>
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-amber-700">
+              {draw.wasDrawn ? (
+                draw.isWinner ? "🎉 You won! Check Available to claim above." : "Winner has been drawn."
+              ) : (
+                <>Today&apos;s entries: <span className="font-semibold">{draw.entryCount}</span>{draw.maxEntries ? ` / ${draw.maxEntries}` : ""}</>
+              )}
+            </p>
+            {!draw.wasDrawn && (
+              <button
+                type="button"
+                onClick={enterDraw}
+                disabled={draw.entered || entering || !visitorId || draw.status !== "open"}
+                className="shrink-0 rounded-full bg-amber-600 px-4 py-2 text-xs font-medium text-white transition hover:bg-amber-700 disabled:opacity-50"
+              >
+                {draw.entered ? "✓ Entered" : draw.status !== "open" ? "Entries closed" : "Enter Free Draw"}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       <p className="mb-1.5 text-xs font-medium text-text-dim">Tasks</p>
       <div className="flex gap-3 overflow-x-auto pb-1">
         {tasks.map((task) => (
@@ -102,7 +165,6 @@ export function RewardsZone() {
             }
           />
         ))}
-        <GameCard icon="🎟️" title="Daily Free Draw" description="Free promotional draw" badge="Coming soon" />
       </div>
 
       {activeTask && visitorId && (

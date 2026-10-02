@@ -308,6 +308,32 @@ export function ensureSchema(): Promise<void> {
       `;
       await sql`CREATE INDEX IF NOT EXISTS idx_task_submissions_visitor ON task_submissions (visitor_id, task_id)`;
       await sql`CREATE INDEX IF NOT EXISTS idx_task_submissions_status ON task_submissions (status, created_at)`;
+
+      await sql`
+        CREATE TABLE IF NOT EXISTS lucky_draws (
+          id BIGSERIAL PRIMARY KEY,
+          title TEXT NOT NULL,
+          description TEXT NOT NULL DEFAULT '',
+          reward_label TEXT NOT NULL DEFAULT '',
+          max_entries INT,
+          starts_at BIGINT,
+          ends_at BIGINT,
+          status TEXT NOT NULL DEFAULT 'open',
+          winner_visitor_id TEXT,
+          drawn_at BIGINT,
+          created_at BIGINT NOT NULL
+        )
+      `;
+
+      await sql`
+        CREATE TABLE IF NOT EXISTS lucky_draw_entries (
+          id BIGSERIAL PRIMARY KEY,
+          draw_id BIGINT NOT NULL REFERENCES lucky_draws(id) ON DELETE CASCADE,
+          visitor_id TEXT NOT NULL,
+          created_at BIGINT NOT NULL,
+          UNIQUE (draw_id, visitor_id)
+        )
+      `;
     })();
   }
   return schemaReady;

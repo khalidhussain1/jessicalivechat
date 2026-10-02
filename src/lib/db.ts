@@ -187,6 +187,85 @@ export function ensureSchema(): Promise<void> {
           blocked_by TEXT
         )
       `;
+
+      // generic reward ledger — every reward (from a game, challenge, task, or draw)
+      // is its own row with its own id, so "no duplicate claims" is just "insert one row"
+      await sql`
+        CREATE TABLE IF NOT EXISTS rewards (
+          id BIGSERIAL PRIMARY KEY,
+          visitor_id TEXT NOT NULL,
+          type TEXT NOT NULL,
+          label TEXT NOT NULL,
+          source TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'available',
+          created_at BIGINT NOT NULL,
+          used_at BIGINT
+        )
+      `;
+      await sql`CREATE INDEX IF NOT EXISTS idx_rewards_visitor ON rewards (visitor_id, id)`;
+
+      await sql`
+        CREATE TABLE IF NOT EXISTS games (
+          id BIGSERIAL PRIMARY KEY,
+          key TEXT NOT NULL UNIQUE,
+          title TEXT NOT NULL,
+          description TEXT NOT NULL DEFAULT '',
+          icon TEXT NOT NULL DEFAULT '🎮',
+          reward_type TEXT NOT NULL DEFAULT 'points',
+          reward_label TEXT NOT NULL DEFAULT '10 points',
+          enabled BOOLEAN NOT NULL DEFAULT true,
+          sort_order INT NOT NULL DEFAULT 0,
+          created_at BIGINT NOT NULL
+        )
+      `;
+
+      await sql`
+        CREATE TABLE IF NOT EXISTS game_plays (
+          id BIGSERIAL PRIMARY KEY,
+          visitor_id TEXT NOT NULL,
+          game_id BIGINT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+          played_date TEXT NOT NULL,
+          reward_id BIGINT REFERENCES rewards(id),
+          created_at BIGINT NOT NULL,
+          UNIQUE (visitor_id, game_id, played_date)
+        )
+      `;
+
+      await sql`
+        CREATE TABLE IF NOT EXISTS quiz_questions (
+          id BIGSERIAL PRIMARY KEY,
+          game_id BIGINT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+          question TEXT NOT NULL,
+          options JSONB NOT NULL,
+          correct_index INT NOT NULL,
+          sort_order INT NOT NULL DEFAULT 0,
+          created_at BIGINT NOT NULL
+        )
+      `;
+
+      await sql`
+        CREATE TABLE IF NOT EXISTS daily_challenges (
+          id BIGSERIAL PRIMARY KEY,
+          title TEXT NOT NULL,
+          description TEXT NOT NULL DEFAULT '',
+          reward_type TEXT NOT NULL DEFAULT 'points',
+          reward_label TEXT NOT NULL DEFAULT '100 points',
+          enabled BOOLEAN NOT NULL DEFAULT true,
+          created_at BIGINT NOT NULL
+        )
+      `;
+
+      await sql`
+        CREATE TABLE IF NOT EXISTS daily_challenge_completions (
+          id BIGSERIAL PRIMARY KEY,
+          visitor_id TEXT NOT NULL,
+          challenge_id BIGINT NOT NULL REFERENCES daily_challenges(id) ON DELETE CASCADE,
+          challenge_date TEXT NOT NULL,
+          reward_id BIGINT REFERENCES rewards(id),
+          created_at BIGINT NOT NULL,
+          UNIQUE (visitor_id, challenge_id, challenge_date)
+        )
+      `;
     })();
   }
   return schemaReady;

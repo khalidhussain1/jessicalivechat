@@ -8,6 +8,7 @@ import { ProfileModal } from "@/components/ProfileModal";
 import { JessicaAvatar } from "@/components/JessicaAvatar";
 import { StatusDot } from "@/components/StatusDot";
 import { useTheme } from "@/lib/use-theme";
+import { GUEST_MODE_CHANGED_EVENT } from "@/lib/use-visitor-id";
 import {
   notificationPermission,
   requestNotificationPermission,
@@ -691,6 +692,7 @@ export function SupportChat() {
     setMessages([]);
     setVisitorId(null);
     lastMessageIdRef.current = 0;
+    window.dispatchEvent(new Event(GUEST_MODE_CHANGED_EVENT));
   }
 
   const ringOnCooldown = ringRemainingMs > 0;
@@ -720,6 +722,7 @@ export function SupportChat() {
         onGuest={() => {
           window.localStorage.setItem(GUEST_KEY, "1");
           setGuestMode(true);
+          window.dispatchEvent(new Event(GUEST_MODE_CHANGED_EVENT));
         }}
       />
     );

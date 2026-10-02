@@ -13,6 +13,7 @@ import { FaqsView } from "@/components/admin/FaqsView";
 import { CannedRepliesView } from "@/components/admin/CannedRepliesView";
 import { CustomersView } from "@/components/admin/CustomersView";
 import { AnalyticsView } from "@/components/admin/AnalyticsView";
+import { GamesView } from "@/components/admin/GamesView";
 import { hasRole, roleLabel, type AgentInfo, type Conversation, type ConversationStatus } from "@/components/admin/types";
 
 const POLL_INTERVAL_MS = 2000;
@@ -23,6 +24,7 @@ type View =
   | "inbox"
   | "customers"
   | "announcements"
+  | "games"
   | "quick_questions"
   | "faqs"
   | "canned_replies"
@@ -46,6 +48,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
     label: "Content",
     items: [
       { key: "announcements", label: "Announcements", minRole: "admin" },
+      { key: "games", label: "Games & Entertainment", minRole: "admin" },
       { key: "quick_questions", label: "Quick Questions", minRole: "admin" },
       { key: "faqs", label: "FAQs", minRole: "admin" },
       { key: "canned_replies", label: "Canned Replies", minRole: "admin" },
@@ -315,6 +318,7 @@ export function AdminShell({ agent, onLogout }: { agent: AgentInfo; onLogout: ()
         )}
         {view === "customers" && hasRole(agent, "admin") && <CustomersView conversations={conversations} />}
         {view === "announcements" && hasRole(agent, "admin") && <AnnouncementsView />}
+        {view === "games" && hasRole(agent, "admin") && <GamesView />}
         {view === "quick_questions" && hasRole(agent, "admin") && <QuickQuestionsView />}
         {view === "faqs" && hasRole(agent, "admin") && <FaqsView />}
         {view === "canned_replies" && hasRole(agent, "admin") && <CannedRepliesView />}

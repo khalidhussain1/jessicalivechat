@@ -14,6 +14,44 @@ import {
   showNotification,
 } from "@/lib/use-browser-notifications";
 
+type Appearance = {
+  primaryColor: string;
+  secondaryColor: string;
+  accentColor: string;
+  backgroundColor: string;
+  borderRadius: number;
+  logoUrl: string | null;
+  avatarUrl: string | null;
+  supportName: string;
+  supportSubtitle: string;
+  welcomeMessage: string;
+};
+
+type SupportAvailability = {
+  status: "online" | "offline" | "away";
+  offlineMessage: string;
+};
+
+// mirrors today's hardcoded values — used until an admin saves settings, and as a
+// fallback if the settings fetch fails, so nothing visually changes by default
+const DEFAULT_APPEARANCE: Appearance = {
+  primaryColor: "#16a34a",
+  secondaryColor: "#15803d",
+  accentColor: "#16a34a",
+  backgroundColor: "#f4f8f6",
+  borderRadius: 24,
+  logoUrl: null,
+  avatarUrl: null,
+  supportName: "Jessica",
+  supportSubtitle: "Game Support",
+  welcomeMessage: "You're chatting with Jessica, your gamer support crew. Send a message to get started.",
+};
+
+const DEFAULT_SUPPORT_AVAILABILITY: SupportAvailability = {
+  status: "online",
+  offlineMessage: "Support is currently offline. You can still leave a message and we'll get back to you.",
+};
+
 type Message = {
   id: number;
   visitorId: string;
@@ -83,9 +121,11 @@ function TypingDots() {
 
 function AuthGate({
   googleEnabled,
+  appearance,
   onGuest,
 }: {
   googleEnabled: boolean;
+  appearance: Appearance;
   onGuest: () => void;
 }) {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
@@ -130,10 +170,10 @@ function AuthGate({
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-5 bg-panel px-8 text-center md:h-[70vh] md:max-h-[720px] md:flex-none md:rounded-2xl md:border md:border-border">
       <div className="flex flex-col items-center gap-2">
-        <JessicaAvatar size={56} />
+        <JessicaAvatar size={56} imageUrl={appearance.avatarUrl ?? appearance.logoUrl} />
         <div>
-          <p className="text-lg font-medium text-foreground">Jessica</p>
-          <p className="text-xs text-text-dim">Game Support</p>
+          <p className="text-lg font-medium text-foreground">{appearance.supportName}</p>
+          <p className="text-xs text-text-dim">{appearance.supportSubtitle}</p>
         </div>
         <p className="mt-1 max-w-xs text-xs text-text-dim">
           Sign in to keep your chat history, or continue as a guest.
@@ -219,6 +259,8 @@ export function SupportChat() {
   const [showProfile, setShowProfile] = useState(false);
   const [guestMode, setGuestMode] = useState<boolean | null>(null);
   const [googleEnabled, setGoogleEnabled] = useState(false);
+  const [appearance, setAppearance] = useState<Appearance>(DEFAULT_APPEARANCE);
+  const [availability, setAvailability] = useState<SupportAvailability>(DEFAULT_SUPPORT_AVAILABILITY);
 
   const [visitorId, setVisitorId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -256,6 +298,13 @@ export function SupportChat() {
     fetch("/api/auth/config")
       .then((res) => res.json())
       .then((data: { googleEnabled: boolean }) => setGoogleEnabled(data.googleEnabled))
+      .catch(() => {});
+    fetch("/api/settings/public")
+      .then((res) => res.json())
+      .then((data: { appearance?: Partial<Appearance>; support_availability?: Partial<SupportAvailability> }) => {
+        if (data.appearance) setAppearance((prev) => ({ ...prev, ...data.appearance }));
+        if (data.support_availability) setAvailability((prev) => ({ ...prev, ...data.support_availability }));
+      })
       .catch(() => {});
   }, []);
 
@@ -338,7 +387,7 @@ export function SupportChat() {
             const latest = newAgentMessages[newAgentMessages.length - 1];
             if (!visible && latest.id !== lastNotifiedIdRef.current) {
               lastNotifiedIdRef.current = latest.id;
-              showNotification("Jessica sent you a message", parseQuote(latest.text).body || "📷 Photo");
+              showNotification(`${appearance.supportName} sent you a message`, parseQuote(latest.text).body || "📷 Photo");
             }
           }
         }
@@ -358,7 +407,7 @@ export function SupportChat() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [ready, session?.user?.id, play]);
+  }, [ready, session?.user?.id, play, appearance.supportName]);
 
   useEffect(() => {
     function update() {
@@ -565,6 +614,7 @@ export function SupportChat() {
     return (
       <AuthGate
         googleEnabled={googleEnabled}
+        appearance={appearance}
         onGuest={() => {
           window.localStorage.setItem(GUEST_KEY, "1");
           setGuestMode(true);
@@ -573,19 +623,40 @@ export function SupportChat() {
     );
   }
 
+  const themeVars = {
+    "--color-accent": appearance.primaryColor,
+    "--color-accent-bright": appearance.secondaryColor,
+    "--background": appearance.backgroundColor,
+  } as React.CSSProperties;
+
   return (
     <div
       onClick={unlock}
+      style={themeVars}
       className="theme-transition flex min-h-0 flex-1 flex-col overflow-hidden bg-panel md:h-[70vh] md:max-h-[720px] md:flex-none md:rounded-2xl md:border md:border-border"
     >
+      {availability.status !== "online" && (
+        <div
+          role="status"
+          className={`shrink-0 border-b px-4 py-2 text-xs font-medium ${
+            availability.status === "away"
+              ? "border-amber-500/30 bg-amber-500/10 text-amber-700"
+              : "border-border bg-panel-raised text-text-dim"
+          }`}
+        >
+          {availability.status === "away"
+            ? "🟡 Support is away right now — replies may be delayed."
+            : `🔴 ${availability.offlineMessage}`}
+        </div>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3 pt-[max(env(safe-area-inset-top),0.75rem)] md:pt-3">
         <div className="flex min-w-0 items-center gap-2.5">
-          <JessicaAvatar size={40} />
+          <JessicaAvatar size={40} imageUrl={appearance.avatarUrl ?? appearance.logoUrl} />
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <p className="truncate text-base font-medium text-foreground">Jessica</p>
+              <p className="truncate text-base font-medium text-foreground">{appearance.supportName}</p>
               <span className="hidden shrink-0 rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-accent-bright sm:inline-flex">
-                Game Support
+                {appearance.supportSubtitle}
               </span>
             </div>
             {connected ? (
@@ -697,10 +768,9 @@ export function SupportChat() {
         >
           <div className="flex justify-start">
             <div className="flex max-w-[80%] items-end gap-2">
-              <JessicaAvatar size={24} />
-              <div className="rounded-2xl border border-border bg-panel-raised px-4 py-2.5 text-sm text-foreground">
-                👾 You&apos;re chatting with Jessica, your gamer support crew. Send a message to
-                get started.
+              <JessicaAvatar size={24} imageUrl={appearance.avatarUrl ?? appearance.logoUrl} />
+              <div className="rounded-2xl border border-border bg-panel-raised px-4 py-2.5 text-sm whitespace-pre-wrap text-foreground">
+                👾 {appearance.welcomeMessage}
               </div>
             </div>
           </div>
@@ -726,11 +796,13 @@ export function SupportChat() {
                   <div
                     className={`flex items-end gap-2 ${message.sender === "user" ? "flex-row-reverse" : ""}`}
                   >
-                    {message.sender === "agent" && <JessicaAvatar size={24} />}
+                    {message.sender === "agent" && (
+                      <JessicaAvatar size={24} imageUrl={appearance.avatarUrl ?? appearance.logoUrl} />
+                    )}
                     <div className="flex flex-col">
                       {message.sender === "agent" && (
                         <p className="mb-0.5 text-[10px] tracking-wide text-accent-bright uppercase">
-                          Jessica
+                          {appearance.supportName}
                         </p>
                       )}
                       <a href={message.imageUrl} target="_blank" rel="noreferrer">
@@ -753,7 +825,9 @@ export function SupportChat() {
                   <div
                     className={`group flex items-end gap-2 ${message.sender === "user" ? "flex-row-reverse" : ""}`}
                   >
-                    {message.sender === "agent" && <JessicaAvatar size={24} />}
+                    {message.sender === "agent" && (
+                      <JessicaAvatar size={24} imageUrl={appearance.avatarUrl ?? appearance.logoUrl} />
+                    )}
                     <div className="flex max-w-[80%] flex-col">
                       <div
                         className={`rounded-2xl px-4 py-2.5 text-sm ${
@@ -848,7 +922,7 @@ export function SupportChat() {
 
           {peerTyping && (
             <div className="flex items-end gap-2">
-              <JessicaAvatar size={24} />
+              <JessicaAvatar size={24} imageUrl={appearance.avatarUrl ?? appearance.logoUrl} />
               <TypingDots />
             </div>
           )}
@@ -921,9 +995,9 @@ export function SupportChat() {
           value={draft}
           onChange={(event) => handleDraftChange(event.target.value)}
           onKeyDown={handleComposerKeyDown}
-          placeholder="Message Jessica…"
+          placeholder={`Message ${appearance.supportName}…`}
           rows={1}
-          aria-label="Message Jessica"
+          aria-label={`Message ${appearance.supportName}`}
           className="max-h-32 min-h-11 flex-1 resize-none rounded-2xl border border-border bg-background px-4 py-2.5 text-base text-foreground placeholder:text-text-faint focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none focus:border-accent/50"
         />
         <button

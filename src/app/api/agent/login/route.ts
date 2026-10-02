@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { AGENT_COOKIE, createAgentSessionToken } from "@/lib/agent-auth";
-import { getAgentByUsername, seedDefaultAgents } from "@/lib/agents-db";
+import { getAgentByUsername, seedDefaultAgents, ensureSuperAdminBootstrap } from "@/lib/agents-db";
 
 export const runtime = "nodejs";
 
@@ -15,18 +15,26 @@ export async function POST(request: NextRequest) {
   }
 
   await seedDefaultAgents();
+  await ensureSuperAdminBootstrap();
 
   const agent = await getAgentByUsername(username);
   if (!agent || !bcrypt.compareSync(password, agent.passwordHash)) {
     return NextResponse.json({ error: "Incorrect username or password" }, { status: 401 });
+  }
+  if (!agent.isActive) {
+    return NextResponse.json({ error: "This agent account has been disabled" }, { status: 403 });
   }
 
   const token = await createAgentSessionToken({
     id: agent.id,
     name: agent.name,
     username: agent.username,
+    role: agent.role,
   });
-  const response = NextResponse.json({ ok: true, agent: { id: agent.id, name: agent.name } });
+  const response = NextResponse.json({
+    ok: true,
+    agent: { id: agent.id, name: agent.name, role: agent.role },
+  });
   response.cookies.set(AGENT_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",

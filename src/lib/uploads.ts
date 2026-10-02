@@ -12,7 +12,7 @@ const MIME_TO_EXT: Record<string, string> = {
 
 export class UploadError extends Error {}
 
-export async function saveImageUpload(file: File): Promise<string> {
+export async function saveImageUpload(file: File, folder = "chat-uploads"): Promise<string> {
   if (!MIME_TO_EXT[file.type]) {
     throw new UploadError("Only PNG, JPEG, GIF, or WEBP images are allowed");
   }
@@ -21,7 +21,7 @@ export async function saveImageUpload(file: File): Promise<string> {
   }
 
   const ext = MIME_TO_EXT[file.type];
-  const filename = `chat-uploads/${randomUUID()}.${ext}`;
+  const filename = `${folder}/${randomUUID()}.${ext}`;
 
   const blob = await put(filename, file, {
     access: "public",

@@ -72,6 +72,31 @@ export function ensureSchema(): Promise<void> {
         )
       `;
       await sql`ALTER TABLE agents ADD COLUMN IF NOT EXISTS last_seen_at BIGINT NOT NULL DEFAULT 0`;
+      await sql`ALTER TABLE agents ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'agent'`;
+      await sql`ALTER TABLE agents ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true`;
+
+      await sql`
+        CREATE TABLE IF NOT EXISTS app_settings (
+          key TEXT PRIMARY KEY,
+          value JSONB NOT NULL,
+          updated_at BIGINT NOT NULL,
+          updated_by TEXT
+        )
+      `;
+
+      await sql`
+        CREATE TABLE IF NOT EXISTS audit_log (
+          id BIGSERIAL PRIMARY KEY,
+          actor_id TEXT,
+          actor_name TEXT,
+          actor_role TEXT,
+          action TEXT NOT NULL,
+          target TEXT,
+          metadata JSONB,
+          created_at BIGINT NOT NULL
+        )
+      `;
+      await sql`CREATE INDEX IF NOT EXISTS idx_audit_log_created ON audit_log (created_at DESC)`;
     })();
   }
   return schemaReady;

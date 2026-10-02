@@ -8,6 +8,6 @@ export async function GET(request: NextRequest) {
   const session = await verifyAgentSessionToken(token);
   return NextResponse.json({
     authenticated: !!session,
-    agent: session ? { id: session.id, name: session.name } : null,
+    agent: session ? { id: session.id, name: session.name, role: session.role } : null,
   });
 }

@@ -208,9 +208,101 @@ export async function setConversationStatus(visitorId: string, status: Conversat
   await sql`UPDATE conversations SET status = ${status} WHERE visitor_id = ${visitorId}`;
 }
 
+export type ConversationPriority = "low" | "normal" | "high" | "urgent";
+
+export async function setConversationPriority(visitorId: string, priority: ConversationPriority) {
+  await ensureSchema();
+  await sql`UPDATE conversations SET priority = ${priority} WHERE visitor_id = ${visitorId}`;
+}
+
+export async function assignConversation(visitorId: string, agentId: string | null) {
+  await ensureSchema();
+  await sql`UPDATE conversations SET assigned_agent_id = ${agentId} WHERE visitor_id = ${visitorId}`;
+}
+
+export type Tag = { id: number; name: string; color: string };
+
+export async function listTags(): Promise<Tag[]> {
+  await ensureSchema();
+  const rows = await sql`SELECT id, name, color FROM tags ORDER BY name ASC`;
+  return rows.map((r) => ({ id: Number(r.id), name: r.name as string, color: r.color as string }));
+}
+
+export async function createTag(name: string, color: string): Promise<Tag> {
+  await ensureSchema();
+  const rows = await sql`
+    INSERT INTO tags (name, color, created_at) VALUES (${name}, ${color}, ${Date.now()})
+    ON CONFLICT (name) DO UPDATE SET color = ${color}
+    RETURNING id, name, color
+  `;
+  return { id: Number(rows[0].id), name: rows[0].name, color: rows[0].color };
+}
+
+export async function deleteTag(id: number) {
+  await ensureSchema();
+  await sql`DELETE FROM tags WHERE id = ${id}`;
+}
+
+export async function addConversationTag(visitorId: string, tagId: number) {
+  await ensureSchema();
+  await ensureConversation(visitorId);
+  await sql`INSERT INTO conversation_tags (visitor_id, tag_id) VALUES (${visitorId}, ${tagId}) ON CONFLICT DO NOTHING`;
+}
+
+export async function removeConversationTag(visitorId: string, tagId: number) {
+  await ensureSchema();
+  await sql`DELETE FROM conversation_tags WHERE visitor_id = ${visitorId} AND tag_id = ${tagId}`;
+}
+
+export type ConversationNote = {
+  id: number;
+  visitorId: string;
+  agentId: string | null;
+  agentName: string | null;
+  text: string;
+  createdAt: number;
+};
+
+export async function addConversationNote(
+  visitorId: string,
+  agentId: string,
+  agentName: string,
+  text: string,
+): Promise<ConversationNote> {
+  await ensureSchema();
+  await ensureConversation(visitorId);
+  const now = Date.now();
+  const rows = await sql`
+    INSERT INTO conversation_notes (visitor_id, agent_id, agent_name, text, created_at)
+    VALUES (${visitorId}, ${agentId}, ${agentName}, ${text}, ${now})
+    RETURNING id, visitor_id as "visitorId", agent_id as "agentId", agent_name as "agentName", text, created_at as "createdAt"
+  `;
+  return { ...rows[0], id: Number(rows[0].id), createdAt: Number(rows[0].createdAt) } as ConversationNote;
+}
+
+export async function listConversationNotes(visitorId: string): Promise<ConversationNote[]> {
+  await ensureSchema();
+  const rows = await sql`
+    SELECT id, visitor_id as "visitorId", agent_id as "agentId", agent_name as "agentName", text, created_at as "createdAt"
+    FROM conversation_notes WHERE visitor_id = ${visitorId} ORDER BY id ASC
+  `;
+  return rows.map((r) => ({ ...r, id: Number(r.id), createdAt: Number(r.createdAt) }) as ConversationNote);
+}
+
+// returns visitor_ids whose message history contains the search text — used to extend
+// the agent inbox's client-side search (name/last-message/ticket) to full history
+export async function searchMessageVisitorIds(query: string): Promise<string[]> {
+  await ensureSchema();
+  const rows = await sql`
+    SELECT DISTINCT visitor_id FROM messages WHERE text ILIKE ${"%" + query + "%"} LIMIT 200
+  `;
+  return rows.map((r) => r.visitor_id as string);
+}
+
 export type ConversationSummary = {
   visitorId: string;
   visitorName: string | null;
+  visitorEmail: string | null;
   createdAt: number;
   lastMessageAt: number;
   agentReadAt: number;
@@ -219,10 +311,15 @@ export type ConversationSummary = {
   ringActive: boolean;
   visitorOnline: boolean;
   status: ConversationStatus;
+  priority: ConversationPriority;
+  assignedAgentId: string | null;
+  ticketNo: number;
+  tagIds: number[];
   lastMessageText: string | null;
   lastMessageSender: "user" | "agent" | null;
   lastMessageImage: boolean;
   unread: boolean;
+  unreadCount: number;
 };
 
 export async function listConversations(): Promise<ConversationSummary[]> {
@@ -238,15 +335,30 @@ export async function listConversations(): Promise<ConversationSummary[]> {
       c.ring_dismissed_at as "ringDismissedAt",
       c.visitor_last_seen_at as "visitorLastSeenAt",
       c.status as "status",
+      c.priority as "priority",
+      c.assigned_agent_id as "assignedAgentId",
+      c.ticket_no as "ticketNo",
+      u.email as "visitorEmail",
       (SELECT m.sender_name FROM messages m
         WHERE m.visitor_id = c.visitor_id AND m.sender = 'user' AND m.sender_name IS NOT NULL
         ORDER BY m.id DESC LIMIT 1) as "visitorName",
       (SELECT m.text FROM messages m WHERE m.visitor_id = c.visitor_id ORDER BY m.id DESC LIMIT 1) as "lastMessageText",
       (SELECT m.sender FROM messages m WHERE m.visitor_id = c.visitor_id ORDER BY m.id DESC LIMIT 1) as "lastMessageSender",
-      (SELECT m.image_url FROM messages m WHERE m.visitor_id = c.visitor_id ORDER BY m.id DESC LIMIT 1) as "lastMessageImage"
+      (SELECT m.image_url FROM messages m WHERE m.visitor_id = c.visitor_id ORDER BY m.id DESC LIMIT 1) as "lastMessageImage",
+      (SELECT COUNT(*)::int FROM messages m
+        WHERE m.visitor_id = c.visitor_id AND m.sender = 'user' AND m.created_at > c.agent_read_at) as "unreadCount"
     FROM conversations c
+    LEFT JOIN users u ON u.id = c.visitor_id
     ORDER BY c.last_message_at DESC
   `;
+
+  const tagRows = await sql`SELECT visitor_id as "visitorId", tag_id as "tagId" FROM conversation_tags`;
+  const tagsByVisitor = new Map<string, number[]>();
+  for (const t of tagRows) {
+    const list = tagsByVisitor.get(t.visitorId) ?? [];
+    list.push(Number(t.tagId));
+    tagsByVisitor.set(t.visitorId, list);
+  }
 
   const now = Date.now();
   return rows.map((row) => {
@@ -255,6 +367,7 @@ export async function listConversations(): Promise<ConversationSummary[]> {
     return {
       visitorId: row.visitorId,
       visitorName: row.visitorName,
+      visitorEmail: row.visitorEmail,
       createdAt: Number(row.createdAt),
       lastMessageAt: Number(row.lastMessageAt),
       agentReadAt: Number(row.agentReadAt),
@@ -263,10 +376,15 @@ export async function listConversations(): Promise<ConversationSummary[]> {
       ringActive: rungAt > 0 && rungAt > ringDismissedAt,
       visitorOnline: now - Number(row.visitorLastSeenAt) < VISITOR_ONLINE_WINDOW_MS,
       status: (row.status ?? "open") as ConversationStatus,
+      priority: (row.priority ?? "normal") as ConversationPriority,
+      assignedAgentId: row.assignedAgentId,
+      ticketNo: Number(row.ticketNo),
+      tagIds: tagsByVisitor.get(row.visitorId) ?? [],
       lastMessageText: row.lastMessageText,
       lastMessageSender: row.lastMessageSender,
       lastMessageImage: !!row.lastMessageImage,
       unread: Number(row.lastMessageAt) > Number(row.agentReadAt),
+      unreadCount: Number(row.unreadCount),
     };
   });
 }
@@ -274,4 +392,14 @@ export async function listConversations(): Promise<ConversationSummary[]> {
 export async function markConversationRead(visitorId: string) {
   await ensureSchema();
   await sql`UPDATE conversations SET agent_read_at = ${Date.now()} WHERE visitor_id = ${visitorId}`;
+}
+
+// explicit "mark unread" action — rewinds agent_read_at to just before the last message
+// so the conversation reappears as unread without touching any message rows
+export async function markConversationUnread(visitorId: string) {
+  await ensureSchema();
+  await sql`
+    UPDATE conversations SET agent_read_at = GREATEST(last_message_at - 1, 0)
+    WHERE visitor_id = ${visitorId}
+  `;
 }

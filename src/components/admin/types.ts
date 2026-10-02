@@ -1,19 +1,29 @@
 export type ConversationStatus = "open" | "pending" | "resolved";
+export type ConversationPriority = "low" | "normal" | "high" | "urgent";
+
+export type Tag = { id: number; name: string; color: string };
 
 export type Conversation = {
   visitorId: string;
   visitorName: string | null;
+  visitorEmail: string | null;
   createdAt: number;
   lastMessageAt: number;
   agentReadAt: number;
+  visitorTypingAt: number;
   rungAt: number;
   ringActive: boolean;
   visitorOnline: boolean;
   status: ConversationStatus;
+  priority: ConversationPriority;
+  assignedAgentId: string | null;
+  ticketNo: number;
+  tagIds: number[];
   lastMessageText: string | null;
   lastMessageSender: "user" | "agent" | null;
   lastMessageImage: boolean;
   unread: boolean;
+  unreadCount: number;
 };
 
 export type Message = {

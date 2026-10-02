@@ -7,18 +7,35 @@ import { DashboardView } from "@/components/admin/DashboardView";
 import { AgentsView } from "@/components/admin/AgentsView";
 import { SettingsView } from "@/components/admin/SettingsView";
 import { AuditLogView } from "@/components/admin/AuditLogView";
+import { AnnouncementsView } from "@/components/admin/AnnouncementsView";
+import { QuickQuestionsView } from "@/components/admin/QuickQuestionsView";
+import { FaqsView } from "@/components/admin/FaqsView";
+import { CannedRepliesView } from "@/components/admin/CannedRepliesView";
 import { hasRole, roleLabel, type AgentInfo, type Conversation, type ConversationStatus } from "@/components/admin/types";
 
 const POLL_INTERVAL_MS = 2000;
 const CONTINUOUS_RING_INTERVAL_MS = 2500;
 
-type View = "dashboard" | "inbox" | "agents" | "settings" | "audit";
+type View =
+  | "dashboard"
+  | "inbox"
+  | "announcements"
+  | "quick_questions"
+  | "faqs"
+  | "canned_replies"
+  | "agents"
+  | "settings"
+  | "audit";
 
 type NavItem = { key: View; label: string; minRole?: "admin" | "super_admin" };
 
 const NAV_ITEMS: NavItem[] = [
   { key: "dashboard", label: "Dashboard" },
   { key: "inbox", label: "Inbox" },
+  { key: "announcements", label: "Announcements", minRole: "admin" },
+  { key: "quick_questions", label: "Quick Questions", minRole: "admin" },
+  { key: "faqs", label: "FAQs", minRole: "admin" },
+  { key: "canned_replies", label: "Canned Replies", minRole: "admin" },
   { key: "agents", label: "Agents", minRole: "admin" },
   { key: "settings", label: "Settings", minRole: "admin" },
   { key: "audit", label: "Audit Log", minRole: "admin" },
@@ -143,6 +160,10 @@ export function AdminShell({ agent, onLogout }: { agent: AgentInfo; onLogout: ()
     }).catch(() => {});
   }
 
+  function patchConversation(visitorId: string, patch: Partial<Conversation>) {
+    setConversations((prev) => prev.map((c) => (c.visitorId === visitorId ? { ...c, ...patch } : c)));
+  }
+
   async function handleLogout() {
     await fetch("/api/agent/logout", { method: "POST" });
     onLogout();
@@ -215,8 +236,8 @@ export function AdminShell({ agent, onLogout }: { agent: AgentInfo; onLogout: ()
 
       <div className="flex flex-1 gap-4 overflow-hidden md:h-[70vh]">
         <nav
-          className={`shrink-0 flex-col gap-1 border-r border-border bg-panel p-2 md:flex md:w-44 md:rounded-2xl md:border ${
-            navOpen ? "absolute inset-x-0 top-[72px] z-10 flex border-b" : "hidden"
+          className={`shrink-0 flex-col gap-1 overflow-y-auto border-r border-border bg-panel p-2 md:flex md:w-44 md:rounded-2xl md:border ${
+            navOpen ? "absolute inset-x-0 top-[72px] z-10 flex max-h-[70vh] border-b" : "hidden"
           }`}
         >
           {visibleNavItems.map((item) => (
@@ -254,10 +275,15 @@ export function AdminShell({ agent, onLogout }: { agent: AgentInfo; onLogout: ()
             setSelectedVisitorId={setSelectedVisitorId}
             dismissRing={dismissRing}
             setStatus={setConversationStatus}
+            patchConversation={patchConversation}
             play={play}
             onUnauthorized={onLogout}
           />
         )}
+        {view === "announcements" && hasRole(agent, "admin") && <AnnouncementsView />}
+        {view === "quick_questions" && hasRole(agent, "admin") && <QuickQuestionsView />}
+        {view === "faqs" && hasRole(agent, "admin") && <FaqsView />}
+        {view === "canned_replies" && hasRole(agent, "admin") && <CannedRepliesView />}
         {view === "agents" && hasRole(agent, "admin") && <AgentsView currentAgent={agent} />}
         {view === "settings" && hasRole(agent, "admin") && <SettingsView />}
         {view === "audit" && hasRole(agent, "admin") && <AuditLogView />}

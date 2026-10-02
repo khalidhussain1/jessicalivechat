@@ -66,6 +66,27 @@ type Message = {
   failed?: boolean;
 };
 
+type QuickQuestion = { id: number; icon: string; label: string; message: string };
+type AnnouncementType = "info" | "success" | "warning" | "important";
+type Announcement = {
+  id: number;
+  text: string;
+  type: AnnouncementType;
+  dismissible: boolean;
+  linkLabel: string | null;
+  linkUrl: string | null;
+};
+type Faq = { id: number; question: string; answer: string };
+
+const DISMISSED_ANNOUNCEMENTS_KEY = "jessica-dismissed-announcements";
+
+const ANNOUNCEMENT_STYLES: Record<AnnouncementType, { icon: string; className: string }> = {
+  info: { icon: "🔔", className: "border-border bg-panel-raised text-text-dim" },
+  success: { icon: "✅", className: "border-accent/30 bg-accent/10 text-accent-bright" },
+  warning: { icon: "⚠️", className: "border-amber-500/30 bg-amber-500/10 text-amber-700" },
+  important: { icon: "📢", className: "border-red-500/30 bg-red-500/10 text-red-600" },
+};
+
 const VISITOR_KEY = "jessica-visitor-id";
 const GUEST_KEY = "jessica-guest-mode";
 const TYPING_THROTTLE_MS = 2000;
@@ -74,12 +95,14 @@ const TYPING_FRESH_MS = 4000;
 const RING_COOLDOWN_MS = 30_000;
 const NEAR_BOTTOM_PX = 80;
 
-const quickActions = [
-  "👤 I need account?",
-  "💳 Payment method?",
-  "💬 Is anyone available to chat?",
-  "🎮 Game question",
-] as const;
+// fallback used only if /api/content/public hasn't returned yet or fails — keeps the
+// exact same buttons/text/behavior customers already see today, "Game question" included
+const DEFAULT_QUICK_QUESTIONS: QuickQuestion[] = [
+  { id: -1, icon: "👤", label: "I need account?", message: "👤 I need account?" },
+  { id: -2, icon: "💳", label: "Payment method?", message: "💳 Payment method?" },
+  { id: -3, icon: "💬", label: "Is anyone available to chat?", message: "💬 Is anyone available to chat?" },
+  { id: -4, icon: "🎮", label: "Game question", message: "🎮 Game question" },
+];
 
 function formatTime(ms: number) {
   return new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
@@ -261,6 +284,11 @@ export function SupportChat() {
   const [googleEnabled, setGoogleEnabled] = useState(false);
   const [appearance, setAppearance] = useState<Appearance>(DEFAULT_APPEARANCE);
   const [availability, setAvailability] = useState<SupportAvailability>(DEFAULT_SUPPORT_AVAILABILITY);
+  const [quickQuestions, setQuickQuestions] = useState<QuickQuestion[]>(DEFAULT_QUICK_QUESTIONS);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [dismissedAnnouncementIds, setDismissedAnnouncementIds] = useState<number[]>([]);
+  const [faqs, setFaqs] = useState<Faq[]>([]);
+  const [showFaqs, setShowFaqs] = useState(false);
 
   const [visitorId, setVisitorId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -306,7 +334,29 @@ export function SupportChat() {
         if (data.support_availability) setAvailability((prev) => ({ ...prev, ...data.support_availability }));
       })
       .catch(() => {});
+    fetch("/api/content/public")
+      .then((res) => res.json())
+      .then((data: { quickQuestions?: QuickQuestion[]; announcements?: Announcement[]; faqs?: Faq[] }) => {
+        if (data.quickQuestions?.length) setQuickQuestions(data.quickQuestions);
+        if (data.announcements) setAnnouncements(data.announcements);
+        if (data.faqs) setFaqs(data.faqs);
+      })
+      .catch(() => {});
+    try {
+      const raw = window.localStorage.getItem(DISMISSED_ANNOUNCEMENTS_KEY);
+      if (raw) setDismissedAnnouncementIds(JSON.parse(raw));
+    } catch {
+      // ignore malformed/absent localStorage value
+    }
   }, []);
+
+  function dismissAnnouncement(id: number) {
+    setDismissedAnnouncementIds((prev) => {
+      const next = [...prev, id];
+      window.localStorage.setItem(DISMISSED_ANNOUNCEMENTS_KEY, JSON.stringify(next));
+      return next;
+    });
+  }
 
   const displayName = session?.user?.name ?? "Guest";
   const showGate = status === "unauthenticated" && guestMode === false;
@@ -737,6 +787,39 @@ export function SupportChat() {
         />
       )}
 
+      {announcements
+        .filter((a) => !dismissedAnnouncementIds.includes(a.id))
+        .map((a) => {
+          const style = ANNOUNCEMENT_STYLES[a.type];
+          return (
+            <div
+              key={a.id}
+              role="status"
+              className={`flex shrink-0 items-center justify-between gap-3 border-b px-4 py-2 text-xs font-medium ${style.className}`}
+            >
+              <span className="flex min-w-0 items-center gap-2">
+                <span aria-hidden="true">{style.icon}</span>
+                <span className="truncate">{a.text}</span>
+                {a.linkUrl && a.linkLabel && (
+                  <a href={a.linkUrl} target="_blank" rel="noreferrer" className="shrink-0 underline underline-offset-2">
+                    {a.linkLabel}
+                  </a>
+                )}
+              </span>
+              {a.dismissible && (
+                <button
+                  type="button"
+                  onClick={() => dismissAnnouncement(a.id)}
+                  aria-label="Dismiss announcement"
+                  className="shrink-0 opacity-70 hover:opacity-100"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          );
+        })}
+
       {notifPermission === "default" && (
         <button
           type="button"
@@ -747,18 +830,39 @@ export function SupportChat() {
         </button>
       )}
 
-      <div className="flex gap-2 overflow-x-auto border-b border-border px-4 py-3">
-        {quickActions.map((label) => (
+      <div className="flex items-center gap-2 overflow-x-auto border-b border-border px-4 py-3">
+        {quickQuestions.map((q) => (
           <button
-            key={label}
+            key={q.id}
             type="button"
-            onClick={() => sendMessage(label)}
+            onClick={() => sendMessage(q.message)}
             className="shrink-0 rounded-full border border-accent/40 px-4 py-2 text-sm whitespace-nowrap text-accent-bright transition hover:border-accent hover:bg-accent/10 focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none active:scale-[0.97]"
           >
-            {label}
+            {q.icon} {q.label}
           </button>
         ))}
+        {faqs.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowFaqs((v) => !v)}
+            aria-expanded={showFaqs}
+            className="shrink-0 rounded-full border border-border px-4 py-2 text-sm whitespace-nowrap text-text-dim transition hover:border-accent/40 hover:text-accent-bright"
+          >
+            ❓ FAQs
+          </button>
+        )}
       </div>
+
+      {showFaqs && faqs.length > 0 && (
+        <div className="max-h-48 shrink-0 space-y-2 overflow-y-auto border-b border-border bg-panel-raised/50 px-4 py-3">
+          {faqs.map((faq) => (
+            <details key={faq.id} className="rounded-lg bg-panel px-3 py-2 text-sm">
+              <summary className="cursor-pointer font-medium text-foreground">{faq.question}</summary>
+              <p className="mt-1.5 whitespace-pre-wrap text-text-dim">{faq.answer}</p>
+            </details>
+          ))}
+        </div>
+      )}
 
       <div className="relative flex-1 overflow-hidden">
         <div
